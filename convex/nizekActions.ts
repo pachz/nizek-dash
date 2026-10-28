@@ -4,6 +4,7 @@ import {
   colorForId,
   deepUnescape,
   extractProjectMeta,
+  extractProjectsFromList,
   extractTasks,
 } from "./lib/parse";
 
@@ -152,19 +153,18 @@ export const syncAll = action({
       return { ok: false, error };
     }
     const listHtml = await listRes.text();
-    let ids = [
-      ...new Set(
-        [...listHtml.matchAll(/\/dashboard\/projects\/(cm[a-z0-9]+)/g)].map(
-          (m) => m[1]!,
-        ),
-      ),
-    ];
-    if (ids.length === 0) {
+    let listed = extractProjectsFromList(listHtml);
+    if (listed.length === 0) {
       const existing = await ctx.runQuery(api.projects.list, {});
-      ids = existing.map((p) => p.nizekId);
+      listed = existing.map((p) => ({
+        id: p.nizekId,
+        name: p.name,
+        teamName: p.teamName ?? null,
+      }));
     }
-    if (ids.length === 0) {
-      const error = "No projects found — check cookie / login.";
+    if (listed.length === 0) {
+      const error =
+        "No projects found in panel HTML — cookie may be valid but list parse failed.";
       await ctx.runMutation(internal.syncInternal.patchSettings, {
         lastError: error,
       });
@@ -186,7 +186,8 @@ export const syncAll = action({
     const known = await ctx.runQuery(api.projects.list, {});
     const enabledMap = new Map(known.map((p) => [p.nizekId, p.enabled]));
 
-    for (const id of ids) {
+    for (const item of listed) {
+      const id = item.id;
       const res = await panelFetch(
         `/dashboard/projects/${id}?tab=sprints`,
         settings.cookieHeader,
@@ -198,8 +199,8 @@ export const syncAll = action({
       const parsed = extractTasks(un, id);
       projects.push({
         nizekId: id,
-        name: meta.name,
-        teamName: meta.teamName ?? undefined,
+        name: meta.name !== id ? meta.name : item.name,
+        teamName: meta.teamName ?? item.teamName ?? undefined,
         enabled: enabledMap.get(id) ?? true,
         taskCount: parsed.length,
         color: colorForId(id),

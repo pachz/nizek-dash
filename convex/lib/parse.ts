@@ -118,6 +118,50 @@ export function extractProjectMeta(
   };
 }
 
+/** Pull project ids/names from /dashboard/projects RSC HTML (not pathname hrefs). */
+export function extractProjectsFromList(html: string): Array<{
+  id: string;
+  name: string;
+  teamName: string | null;
+}> {
+  // Work on lightly unescaped flight text. Match id+name first, then require
+  // project-only fields nearby (logoUrl/teamId/sprintsEnabled) so we don't
+  // swallow long descriptions into the next object or pick projectRole rows.
+  const un = deepUnescape(html);
+  const out: Array<{ id: string; name: string; teamName: string | null }> = [];
+  const seen = new Set<string>();
+
+  const re = /"id":"(cm[a-z0-9]+)","name":"([^"]+)"/g;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(un))) {
+    const id = m[1]!;
+    const name = m[2]!;
+    if (seen.has(id) || !name || name.length > 80) continue;
+
+    const window = un.slice(m.index, m.index + 4000);
+    const logoAt = window.indexOf('"logoUrl":');
+    const teamIdAt = window.indexOf('"teamId":"cm');
+    const sprintsAt = window.indexOf('"sprintsEnabled":');
+    const isAdminAt = window.indexOf('"isAdmin":');
+    // Roles: isAdmin appears before logoUrl (or logoUrl missing).
+    if (logoAt < 0 || teamIdAt < 0 || sprintsAt < 0) continue;
+    if (isAdminAt >= 0 && isAdminAt < logoAt) continue;
+
+    seen.add(id);
+    const team = window.match(/"team":\{"id":"[^"]+","name":"([^"]+)"\}/);
+    out.push({ id, name, teamName: team?.[1] ?? null });
+  }
+
+  for (const hit of html.matchAll(/\/dashboard\/projects\/(cm[a-z0-9]+)/g)) {
+    const id = hit[1]!;
+    if (seen.has(id)) continue;
+    seen.add(id);
+    out.push({ id, name: id, teamName: null });
+  }
+
+  return out;
+}
+
 const PALETTE = [
   "#0d9488",
   "#0284c7",
