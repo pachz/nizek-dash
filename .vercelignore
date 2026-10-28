@@ -1,0 +1,8 @@
+_nizek_js
+_panel.html
+seed/part*.txt
+seed/_parts_meta.json
+seed/import-args.json
+.convex/local
+*.log
+README.md
