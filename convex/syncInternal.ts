@@ -92,3 +92,36 @@ export const replaceAll = internalMutation({
     }
   },
 });
+
+export const patchTask = internalMutation({
+  args: {
+    nizekId: v.string(),
+    description: v.optional(v.union(v.string(), v.null())),
+    title: v.optional(v.string()),
+    stage: v.optional(v.string()),
+    priority: v.optional(v.string()),
+    estimatedMinutes: v.optional(v.union(v.number(), v.null())),
+    assigneeName: v.optional(v.union(v.string(), v.null())),
+    assigneeImage: v.optional(v.union(v.string(), v.null())),
+    sprintName: v.optional(v.union(v.string(), v.null())),
+    sprintStatus: v.optional(v.union(v.string(), v.null())),
+    stageEnteredAt: v.optional(v.union(v.string(), v.null())),
+    startedAt: v.optional(v.union(v.string(), v.null())),
+    detailExtras: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    const task = await ctx.db
+      .query("tasks")
+      .withIndex("by_nizekId", (q) => q.eq("nizekId", args.nizekId))
+      .unique();
+    if (!task) return null;
+    const cleaned: Record<string, unknown> = {};
+    for (const [k, val] of Object.entries(args)) {
+      if (k === "nizekId" || val === undefined) continue;
+      cleaned[k] = val;
+    }
+    if (Object.keys(cleaned).length === 0) return task._id;
+    await ctx.db.patch(task._id, cleaned);
+    return task._id;
+  },
+});

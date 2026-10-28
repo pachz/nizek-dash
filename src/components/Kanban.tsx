@@ -7,6 +7,7 @@ export type BoardTask = {
   projectName: string;
   projectColor: string;
   title: string;
+  description?: string | null;
   taskNumber: number;
   taskType: string;
   stage: string;
@@ -29,9 +30,11 @@ const priorityClass: Record<string, string> = {
 export function Kanban({
   tasks,
   stages,
+  onSelect,
 }: {
   tasks: BoardTask[];
   stages: StageKey[];
+  onSelect?: (task: BoardTask) => void;
 }) {
   const cols = BOARD_COLUMNS.filter((c) => stages.includes(c.key));
 
@@ -57,6 +60,16 @@ export function Kanban({
                     key={task._id}
                     className="card"
                     style={{ animationDelay: `${Math.min(i, 12) * 28}ms` }}
+                    role={onSelect ? "button" : undefined}
+                    tabIndex={onSelect ? 0 : undefined}
+                    onClick={() => onSelect?.(task)}
+                    onKeyDown={(e) => {
+                      if (!onSelect) return;
+                      if (e.key === "Enter" || e.key === " ") {
+                        e.preventDefault();
+                        onSelect(task);
+                      }
+                    }}
                   >
                     <div className="card-top">
                       <span

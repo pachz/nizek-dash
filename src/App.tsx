@@ -2,6 +2,7 @@ import { useDeferredValue, useMemo, useState } from "react";
 import { useAction, useMutation, useQuery } from "convex/react";
 import { api } from "../convex/_generated/api";
 import { Kanban } from "./components/Kanban";
+import { TaskDetail } from "./components/TaskDetail";
 import {
   BOARD_COLUMNS,
   DEFAULT_VISIBLE_STAGES,
@@ -36,6 +37,7 @@ export default function App() {
   const [activeSprintOnly, setActiveSprintOnly] = useState(false);
   const [cookieDraft, setCookieDraft] = useState("");
   const [panelOpen, setPanelOpen] = useState(false);
+  const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
   const [status, setStatus] = useState<string | null>(null);
   const [statusTone, setStatusTone] = useState<"ok" | "err">("ok");
   const [pending, setPending] = useState(false);
@@ -311,9 +313,7 @@ export default function App() {
             >
               <span className="swatch" />
               <span className="pname">{p.name}</span>
-              <span className="pmeta">
-                {p.teamName ?? "—"} · {p.taskCount}
-              </span>
+              <span className="pmeta">{p.taskCount}</span>
             </button>
           ))}
           {!projects?.length ? (
@@ -402,9 +402,20 @@ export default function App() {
         {tasks === undefined ? (
           <div className="loading">Loading board…</div>
         ) : (
-          <Kanban tasks={tasks} stages={visibleStages} />
+          <Kanban
+            tasks={tasks}
+            stages={visibleStages}
+            onSelect={(task) => setSelectedTaskId(task.nizekId)}
+          />
         )}
       </main>
+
+      {selectedTaskId ? (
+        <TaskDetail
+          nizekId={selectedTaskId}
+          onClose={() => setSelectedTaskId(null)}
+        />
+      ) : null}
     </div>
   );
 }

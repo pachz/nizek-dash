@@ -1,0 +1,139 @@
+{
+  "nizekId": "cmsr7l0t9002c01mpic90x5j3",
+  "description": "### Current Behavior?\nAcross several screens in the app, some UI text and elements are not displayed clearly:\n\nThe option titles are positioned too close to the selection circle (radio button).\nThe descriptive text/phrases displayed under options are too small and difficult to read.\nSome words and phrases are cropped or not fully visible.\nText spacing and alignment are inconsistent in some areas, affecting overall readability.\n\nMessage Character Limit – Error Message Update\n\nCurrent Behavior:\nWhen the text entered in the Message Card field exceeds 150 characters, an error message appears. The current error message is unclear and contains the technical field name metadata.message.\n\nApp Text & UI Color – Apply Baqah Brand Color\n\nCurrent Behavior:\nSome text, icons, and UI elements across the app are displayed in black, which is inconsistent with the Baqah brand styling.\n\n### Requested Change?\nimprove the text layout and readability across the app:\n\nAdd proper spacing between the selection circle (radio button) and its title/text.\nIncrease the font size of descriptions and secondary text slightly to make them easier to read.\nEnsure all words and sentences are fully visible and are not cropped or cut off.\nAllow text to wrap correctly to a second line when there is not enough horizontal space.\nMaintain proper padding between text, icons, buttons, and other UI elements.\nApply the improvements consistently across relevant screens, including:\nDelivery options\nPayment methods\nCart\nProduct listing/cards\nOrder summary and informational messages\n\nReplace the  Message Card field exceeds 150  current validation message with a clear, user-friendly message in both Arabic and English.\n\nArabic:\n\nيجب ألا تتجاوز الرسالة 150 حرفاً.\n\nEnglish:\n\nThe message must not exceed 150 characters.\n\n\nChange the applicable black UI elements to the existing Baqah brand color:\n\nBaqah Color: #505748\n\nThis should be applied consistently across the app where black is currently used for primary UI styling, including:\n\nProduct price \nMain titles and headings\nProduct names and prices\nNavigation icons and labels\nCart icons and Add To Cart text\nOther applicable black text/icons\n\nPlease ensure the change is applied consistently across both Arabic and English interfaces without affecting readability or disabled/error-state colors.\n1e:T598,improve the text\n\n### Who this enhacment is for?\nEnd User",
+  "extras": {
+    "questions": [
+      {
+        "question": "Current Behavior?",
+        "answer": "Across several screens in the app, some UI text and elements are not displayed clearly:\n\nThe option titles are positioned too close to the selection circle (radio button).\nThe descriptive text/phrases displayed under options are too small and difficult to read.\nSome words and phrases are cropped or not fully visible.\nText spacing and alignment are inconsistent in some areas, affecting overall readability.\n\nMessage Character Limit – Error Message Update\n\nCurrent Behavior:\nWhen the text entered in the Message Card field exceeds 150 characters, an error message appears. The current error message is unclear and contains the technical field name metadata.message.\n\nApp Text & UI Color – Apply Baqah Brand Color\n\nCurrent Behavior:\nSome text, icons, and UI elements across the app are displayed in black, which is inconsistent with the Baqah brand styling."
+      },
+      {
+        "question": "Requested Change?",
+        "answer": "improve the text layout and readability across the app:\n\nAdd proper spacing between the selection circle (radio button) and its title/text.\nIncrease the font size of descriptions and secondary text slightly to make them easier to read.\nEnsure all words and sentences are fully visible and are not cropped or cut off.\nAllow text to wrap correctly to a second line when there is not enough horizontal space.\nMaintain proper padding between text, icons, buttons, and other UI elements.\nApply the improvements consistently across relevant screens, including:\nDelivery options\nPayment methods\nCart\nProduct listing/cards\nOrder summary and informational messages\n\nReplace the  Message Card field exceeds 150  current validation message with a clear, user-friendly message in both Arabic and English.\n\nArabic:\n\nيجب ألا تتجاوز الرسالة 150 حرفاً.\n\nEnglish:\n\nThe message must not exceed 150 characters.\n\n\nChange the applicable black UI elements to the existing Baqah brand color:\n\nBaqah Color: #505748\n\nThis should be applied consistently across the app where black is currently used for primary UI styling, including:\n\nProduct price \nMain titles and headings\nProduct names and prices\nNavigation icons and labels\nCart icons and Add To Cart text\nOther applicable black text/icons\n\nPlease ensure the change is applied consistently across both Arabic and English interfaces without affecting readability or disabled/error-state colors.\n1e:T598,improve the text"
+      },
+      {
+        "question": "Who this enhacment is for?",
+        "answer": "End User"
+      }
+    ],
+    "attachments": [
+      {
+        "name": "Screenshot 2026-08-13 at 10.40.07 am.png",
+        "url": "https://pub-d3e077b8e55b43b49b3e01a9832fe4d6.r2.dev/uploads/user_3EAFtwUkjet3DllW4AAULlKeGH8/20260813/074026_b0399fff.png"
+      },
+      {
+        "name": "WhatsApp Image 2026-08-13 at 11.46.45.jpeg",
+        "url": "https://pub-d3e077b8e55b43b49b3e01a9832fe4d6.r2.dev/uploads/user_3EAFtwUkjet3DllW4AAULlKeGH8/20260818/082239_ee8d72cb.jpeg"
+      },
+      {
+        "name": "WhatsApp Image 2026-08-18 at 09.13.22.jpeg",
+        "url": "https://pub-d3e077b8e55b43b49b3e01a9832fe4d6.r2.dev/uploads/user_3EAFtwUkjet3DllW4AAULlKeGH8/20260818/104111_277edca2.jpeg"
+      },
+      {
+        "name": "Screenshot 2026-08-18 at 1.44.25 pm.png",
+        "url": "https://pub-d3e077b8e55b43b49b3e01a9832fe4d6.r2.dev/uploads/user_3EAFtwUkjet3DllW4AAULlKeGH8/20260818/104524_73bab891.png"
+      }
+    ],
+    "comments": [],
+    "proofOfWork": [
+      {
+        "name": "Improve App Text Spacing, Readability & Visibility (View the attachments)-Message Character Limit-App Text & UI Color.mp4",
+        "author": "Arslan Naseem",
+        "at": "2026-08-25T13:16:40.032Z",
+        "url": null
+      }
+    ],
+    "activity": [
+      {
+        "action": "moved",
+        "author": "Ritaj Aljaafari",
+        "summary": "moved → SHIPPED",
+        "at": "2026-09-08T09:36:41.961Z"
+      },
+      {
+        "action": "moved",
+        "author": "Ritaj Aljaafari",
+        "summary": "moved → COMPLETED",
+        "at": "2026-09-01T13:24:46.231Z"
+      },
+      {
+        "action": "moved",
+        "author": "Ritaj Aljaafari",
+        "summary": "moved → DONE",
+        "at": "2026-09-01T13:22:53.108Z"
+      },
+      {
+        "action": "moved",
+        "author": "Arslan Naseem",
+        "summary": "moved → INTERNAL REVIEW",
+        "at": "2026-08-25T13:16:40.086Z"
+      },
+      {
+        "action": "proof_of_work",
+        "author": "Arslan Naseem",
+        "summary": "uploaded proof of work: Improve App Text Spacing, Readability & Visibility (View the attachments)-Message Character Limit-App Text & UI Color.mp4",
+        "at": "2026-08-25T13:16:40.032Z"
+      },
+      {
+        "action": "moved",
+        "author": "Arslan Naseem",
+        "summary": "moved → IN DEVELOPMENT",
+        "at": "2026-08-25T09:18:30.178Z"
+      },
+      {
+        "action": "moved",
+        "author": "Ritaj Aljaafari",
+        "summary": "moved → TODO",
+        "at": "2026-08-24T09:56:47.904Z"
+      },
+      {
+        "action": "updated",
+        "author": "Ritaj Aljaafari",
+        "summary": "updated title",
+        "at": "2026-08-18T10:45:53.655Z"
+      },
+      {
+        "action": "updated",
+        "author": "Ritaj Aljaafari",
+        "summary": "updated title",
+        "at": "2026-08-18T10:45:41.677Z"
+      },
+      {
+        "action": "updated",
+        "author": "Ritaj Aljaafari",
+        "summary": "updated priority",
+        "at": "2026-08-18T08:18:49.910Z"
+      },
+      {
+        "action": "updated",
+        "author": "Ritaj Aljaafari",
+        "summary": "updated priority",
+        "at": "2026-08-18T08:18:49.117Z"
+      },
+      {
+        "action": "updated",
+        "author": "Ritaj Aljaafari",
+        "summary": "updated priority",
+        "at": "2026-08-13T08:23:08.926Z"
+      },
+      {
+        "action": "updated",
+        "author": "Ritaj Aljaafari",
+        "summary": "updated priority",
+        "at": "2026-08-13T08:23:01.688Z"
+      },
+      {
+        "action": "moved",
+        "author": "Ritaj Aljaafari",
+        "summary": "moved → BACKLOG",
+        "at": "2026-08-13T07:40:43.673Z"
+      },
+      {
+        "action": "created",
+        "author": "Ritaj Aljaafari",
+        "summary": "created this task",
+        "at": "2026-08-13T07:40:40.419Z"
+      }
+    ]
+  }
+}

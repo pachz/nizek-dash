@@ -1,5 +1,82 @@
 import { v } from "convex/values";
-import { query } from "./_generated/server";
+import { mutation, query } from "./_generated/server";
+
+export const get = query({
+  args: { nizekId: v.string() },
+  handler: async (ctx, args) => {
+    const task = await ctx.db
+      .query("tasks")
+      .withIndex("by_nizekId", (q) => q.eq("nizekId", args.nizekId))
+      .unique();
+    if (!task) return null;
+    const project = await ctx.db
+      .query("projects")
+      .withIndex("by_nizekId", (q) => q.eq("nizekId", task.projectId))
+      .unique();
+    let extras: {
+      questions: Array<{ question: string; answer: string }>;
+      attachments: Array<{ name: string; url: string }>;
+      comments: Array<{
+        author: string;
+        body: string;
+        at?: string | null;
+        imageUrl?: string | null;
+      }>;
+      proofOfWork: Array<{
+        name: string;
+        url?: string | null;
+        author?: string | null;
+        at?: string | null;
+      }>;
+      activity: Array<{
+        action: string;
+        author: string;
+        summary: string;
+        at?: string | null;
+      }>;
+    } | null = null;
+    if (task.detailExtras) {
+      try {
+        extras = JSON.parse(task.detailExtras) as NonNullable<typeof extras>;
+      } catch {
+        extras = null;
+      }
+    }
+    return {
+      ...task,
+      projectName: project?.name ?? task.projectId,
+      projectColor: project?.color ?? "#64748b",
+      teamName: project?.teamName ?? null,
+      panelUrl: `https://panel.nizek.com/dashboard/projects/${task.projectId}/tasks/${task.nizekId}`,
+      extras,
+    };
+  },
+});
+
+/** Cache Panel-parsed extras (Q&A, attachments, comments, activity). */
+export const saveExtras = mutation({
+  args: {
+    nizekId: v.string(),
+    description: v.optional(v.union(v.string(), v.null())),
+    extrasJson: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const task = await ctx.db
+      .query("tasks")
+      .withIndex("by_nizekId", (q) => q.eq("nizekId", args.nizekId))
+      .unique();
+    if (!task) throw new Error("Task not found");
+    // Validate JSON shape lightly
+    JSON.parse(args.extrasJson);
+    await ctx.db.patch(task._id, {
+      detailExtras: args.extrasJson,
+      ...(args.description !== undefined
+        ? { description: args.description }
+        : {}),
+    });
+    return { ok: true as const };
+  },
+});
 
 export const listForBoard = query({
   args: {

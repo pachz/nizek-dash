@@ -44,6 +44,8 @@ export default defineSchema({
     sprintStatus: v.optional(v.union(v.string(), v.null())),
     stageEnteredAt: v.optional(v.union(v.string(), v.null())),
     startedAt: v.optional(v.union(v.string(), v.null())),
+    /** JSON blob: questions, attachments, comments, proofOfWork, activity */
+    detailExtras: v.optional(v.string()),
   })
     .index("by_nizekId", ["nizekId"])
     .index("by_project", ["projectId"])

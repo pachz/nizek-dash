@@ -1,3 +1,4 @@
+import { v } from "convex/values";
 import { action, internalAction } from "./_generated/server";
 import { api, internal } from "./_generated/api";
 import {
@@ -5,6 +6,7 @@ import {
   deepUnescape,
   extractProjectMeta,
   extractProjectsFromList,
+  extractTaskDetail,
   extractTasks,
 } from "./lib/parse";
 
@@ -235,6 +237,139 @@ export const syncAll = action({
     });
 
     return { ok: true, projects: projects.length, tasks: tasks.length };
+  },
+});
+
+export const fetchTaskDetail = action({
+  args: {
+    nizekId: v.string(),
+    projectId: v.optional(v.string()),
+  },
+  handler: async (
+    ctx,
+    args,
+  ): Promise<
+    Result<{
+      description: string | null;
+      questions: Array<{ question: string; answer: string }>;
+      attachments: Array<{ name: string; url: string }>;
+      comments: Array<{
+        author: string;
+        body: string;
+        at?: string | null;
+        imageUrl?: string | null;
+      }>;
+      proofOfWork: Array<{
+        name: string;
+        url?: string | null;
+        author?: string | null;
+        at?: string | null;
+      }>;
+      activity: Array<{
+        action: string;
+        author: string;
+        summary: string;
+        at?: string | null;
+      }>;
+      refreshed: boolean;
+    }>
+  > => {
+    const empty = {
+      questions: [] as Array<{ question: string; answer: string }>,
+      attachments: [] as Array<{ name: string; url: string }>,
+      comments: [] as Array<{
+        author: string;
+        body: string;
+        at?: string | null;
+        imageUrl?: string | null;
+      }>,
+      proofOfWork: [] as Array<{
+        name: string;
+        url?: string | null;
+        author?: string | null;
+        at?: string | null;
+      }>,
+      activity: [] as Array<{
+        action: string;
+        author: string;
+        summary: string;
+        at?: string | null;
+      }>,
+    };
+
+    const settings = await ctx.runQuery(api.settings.get, {});
+    const existing = await ctx.runQuery(api.tasks.get, {
+      nizekId: args.nizekId,
+    });
+    if (!existing) {
+      return { ok: false, error: "Task not found locally — sync first." };
+    }
+
+    const cached = existing.detailExtras
+      ? (JSON.parse(existing.detailExtras) as typeof empty)
+      : empty;
+
+    if (!settings?.cookieHeader) {
+      return {
+        ok: true,
+        description: existing.description ?? null,
+        ...cached,
+        refreshed: false,
+      };
+    }
+
+    const projectId = args.projectId ?? existing.projectId;
+    const res = await panelFetch(
+      `/dashboard/projects/${projectId}/tasks/${args.nizekId}`,
+      settings.cookieHeader,
+    );
+    if (!res.ok) {
+      return {
+        ok: false,
+        error: `Task detail fetch failed (${res.status}) — cookie may be expired.`,
+      };
+    }
+    const html = await res.text();
+    const detail = extractTaskDetail(html, args.nizekId);
+    if (!detail) {
+      return {
+        ok: true,
+        description: existing.description ?? null,
+        ...cached,
+        refreshed: false,
+      };
+    }
+
+    const extras = {
+      questions: detail.questions,
+      attachments: detail.attachments,
+      comments: detail.comments,
+      proofOfWork: detail.proofOfWork,
+      activity: detail.activity,
+    };
+
+    await ctx.runMutation(internal.syncInternal.patchTask, {
+      nizekId: args.nizekId,
+      description: detail.description,
+      title: detail.title,
+      stage: detail.stage,
+      priority: detail.priority,
+      estimatedMinutes: detail.estimatedMinutes,
+      assigneeName: detail.assigneeName,
+      assigneeImage: detail.assigneeImage,
+      sprintName: detail.sprintName,
+      sprintStatus: detail.sprintStatus,
+      stageEnteredAt: detail.stageEnteredAt,
+      startedAt: detail.startedAt,
+      detailExtras: JSON.stringify(extras),
+    });
+
+    return {
+      ok: true,
+      description: detail.description,
+      ...extras,
+      refreshed: true,
+    };
   },
 });
 

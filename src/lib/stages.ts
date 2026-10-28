@@ -31,3 +31,20 @@ export function formatHours(minutes: number | null | undefined) {
   if (h < 1) return `${minutes}m`;
   return `${Number.isInteger(h) ? h : h.toFixed(1)}h`;
 }
+
+export function stageLabel(stage: string) {
+  return BOARD_COLUMNS.find((c) => c.key === stage)?.label ?? stage.replaceAll("_", " ");
+}
+
+export function formatWhen(iso: string | null | undefined) {
+  if (!iso) return null;
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return iso;
+  return d.toLocaleString(undefined, {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
