@@ -1,4 +1,4 @@
-import { useDeferredValue, useMemo, useState, useTransition } from "react";
+import { useDeferredValue, useMemo, useState } from "react";
 import { useAction, useMutation, useQuery } from "convex/react";
 import { api } from "../convex/_generated/api";
 import { Kanban } from "./components/Kanban";
@@ -7,6 +7,18 @@ import {
   DEFAULT_VISIBLE_STAGES,
   type StageKey,
 } from "./lib/stages";
+
+function friendlyError(err: unknown): string {
+  if (err instanceof Error) {
+    const cleaned = err.message
+      .replace(/^\[Request ID:[^\]]+\]\s*/i, "")
+      .replace(/^Server Error\s*/i, "")
+      .replace(/^Uncaught Error:\s*/i, "")
+      .trim();
+    return cleaned || err.message;
+  }
+  return String(err);
+}
 
 export default function App() {
   const settings = useQuery(api.settings.get);
@@ -25,7 +37,8 @@ export default function App() {
   const [cookieDraft, setCookieDraft] = useState("");
   const [panelOpen, setPanelOpen] = useState(false);
   const [status, setStatus] = useState<string | null>(null);
-  const [pending, startTransition] = useTransition();
+  const [statusTone, setStatusTone] = useState<"ok" | "err">("ok");
+  const [pending, setPending] = useState(false);
 
   const tasks = useQuery(api.tasks.listForBoard, {
     search: deferredSearch || undefined,
@@ -42,6 +55,30 @@ export default function App() {
   const importExport = useMutation(api.seed.importExport);
   const rotateToken = useAction(api.nizekActions.rotateToken);
   const syncAll = useAction(api.nizekActions.syncAll);
+
+  function showOk(message: string) {
+    setStatusTone("ok");
+    setStatus(message);
+  }
+
+  function showErr(message: string) {
+    setStatusTone("err");
+    setStatus(message);
+    setPanelOpen(true);
+  }
+
+  async function runJob(label: string, job: () => Promise<void>) {
+    if (pending) return;
+    setPending(true);
+    showOk(label);
+    try {
+      await job();
+    } catch (e) {
+      showErr(friendlyError(e));
+    } finally {
+      setPending(false);
+    }
+  }
 
   const enabledCount = useMemo(
     () => projects?.filter((p) => p.enabled).length ?? 0,
@@ -112,17 +149,15 @@ export default function App() {
             className="primary"
             disabled={pending}
             onClick={() =>
-              startTransition(async () => {
-                setStatus("Rotating Centrifugo JWT…");
-                try {
-                  const r = await rotateToken({});
-                  setStatus(
-                    `Rotated · sub ${r.sub?.slice(0, 8) ?? "?"} · ${r.email ?? ""}`,
-                  );
-                } catch (e) {
-                  setStatus(e instanceof Error ? e.message : String(e));
-                  setPanelOpen(true);
+              void runJob("Rotating Centrifugo JWT…", async () => {
+                const r = await rotateToken({});
+                if (!r.ok) {
+                  showErr(r.error);
+                  return;
                 }
+                showOk(
+                  `Rotated · sub ${r.sub?.slice(0, 8) ?? "?"} · ${r.email ?? ""}`,
+                );
               })
             }
           >
@@ -133,15 +168,13 @@ export default function App() {
             className="primary solid"
             disabled={pending}
             onClick={() =>
-              startTransition(async () => {
-                setStatus("Syncing projects & tasks…");
-                try {
-                  const r = await syncAll({});
-                  setStatus(`Synced ${r.projects} projects · ${r.tasks} tasks`);
-                } catch (e) {
-                  setStatus(e instanceof Error ? e.message : String(e));
-                  setPanelOpen(true);
+              void runJob("Syncing projects & tasks…", async () => {
+                const r = await syncAll({});
+                if (!r.ok) {
+                  showErr(r.error);
+                  return;
                 }
+                showOk(`Synced ${r.projects} projects · ${r.tasks} tasks`);
               })
             }
           >
@@ -162,7 +195,11 @@ export default function App() {
         {settings?.lastError ? (
           <span className="pill danger">{settings.lastError}</span>
         ) : null}
-        {status ? <span className="pill soft">{status}</span> : null}
+        {status ? (
+          <span className={`pill ${statusTone === "err" ? "danger" : "soft"}`}>
+            {status}
+          </span>
+        ) : null}
       </div>
 
       {panelOpen ? (
@@ -185,10 +222,11 @@ export default function App() {
               <button
                 type="button"
                 className="primary solid"
+                disabled={pending}
                 onClick={() =>
-                  startTransition(async () => {
+                  void runJob("Saving cookie…", async () => {
                     await saveCookie({ cookieHeader: cookieDraft });
-                    setStatus("Cookie saved");
+                    showOk("Cookie saved");
                   })
                 }
               >
@@ -197,9 +235,9 @@ export default function App() {
               <button
                 type="button"
                 className="ghost"
+                disabled={pending}
                 onClick={() =>
-                  startTransition(async () => {
-                    setStatus("Importing local seed…");
+                  void runJob("Importing local seed…", async () => {
                     const { default: seed } = await import(
                       "../seed/nizek-export.json"
                     );
@@ -214,9 +252,7 @@ export default function App() {
                       tasks: seed.tasks,
                       user: seed.user,
                     });
-                    setStatus(
-                      `Seeded ${r.projects} projects · ${r.tasks} tasks`,
-                    );
+                    showOk(`Seeded ${r.projects} projects · ${r.tasks} tasks`);
                   })
                 }
               >

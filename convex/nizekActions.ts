@@ -9,6 +9,10 @@ import {
 
 const PANEL = "https://panel.nizek.com";
 
+type Ok<T> = { ok: true } & T;
+type Err = { ok: false; error: string };
+type Result<T> = Ok<T> | Err;
+
 function decodeJwtExp(token: string): {
   exp?: number;
   sub?: string;
@@ -42,17 +46,28 @@ async function panelFetch(
 
 export const rotateToken = action({
   args: {},
-  handler: async (ctx) => {
+  handler: async (ctx): Promise<
+    Result<{
+      expiresAt: number | null;
+      sub: string | null;
+      email: string | null;
+    }>
+  > => {
     const settings = await ctx.runQuery(api.settings.get, {});
     if (!settings?.cookieHeader) {
-      throw new Error(
-        "Paste your panel.nizek.com Cookie header first (DevTools → Network → any request → Cookie).",
-      );
+      const error =
+        "Paste your panel.nizek.com Cookie header first (DevTools → Network → any request → Cookie).";
+      await ctx.runMutation(internal.syncInternal.patchSettings, {
+        lastError: error,
+      });
+      return { ok: false, error };
     }
     const deviceId = settings.deviceId ?? crypto.randomUUID();
 
-    // better-auth session refresh when the client signals needsRefresh
-    const sessionRes = await panelFetch("/api/auth/get-session", settings.cookieHeader);
+    const sessionRes = await panelFetch(
+      "/api/auth/get-session",
+      settings.cookieHeader,
+    );
     type SessionPayload = {
       session?: unknown;
       user?: { name?: string; email?: string };
@@ -80,12 +95,12 @@ export const rotateToken = action({
       },
     );
     if (!centRes.ok) {
-      const err = `Centrifugo rotate failed (${centRes.status})`;
+      const error = `Centrifugo rotate failed (${centRes.status})`;
       await ctx.runMutation(internal.syncInternal.patchSettings, {
-        lastError: err,
+        lastError: error,
         deviceId,
       });
-      throw new Error(err);
+      return { ok: false, error };
     }
     const { token } = (await centRes.json()) as { token: string };
     const claims = decodeJwtExp(token);
@@ -100,6 +115,7 @@ export const rotateToken = action({
       lastError: undefined,
     });
     return {
+      ok: true,
       expiresAt: claims.exp ? claims.exp * 1000 : null,
       sub: claims.sub ?? null,
       email: sessionJson?.user?.email ?? null,
@@ -109,31 +125,31 @@ export const rotateToken = action({
 
 export const syncAll = action({
   args: {},
-  handler: async (ctx) => {
+  handler: async (ctx): Promise<
+    Result<{ projects: number; tasks: number }>
+  > => {
     const settings = await ctx.runQuery(api.settings.get, {});
     if (!settings?.cookieHeader) {
-      throw new Error(
-        "Paste your panel.nizek.com Cookie header first (DevTools → Network → any request → Cookie).",
-      );
+      const error =
+        "Paste your panel.nizek.com Cookie header first (DevTools → Network → any request → Cookie).";
+      await ctx.runMutation(internal.syncInternal.patchSettings, {
+        lastError: error,
+      });
+      return { ok: false, error };
     }
 
-    // Keep realtime JWT fresh while syncing
-    try {
-      await ctx.runAction(api.nizekActions.rotateToken, {});
-    } catch {
-      // sync can still proceed if rotate fails after cookie issues surface below
-    }
+    await ctx.runAction(api.nizekActions.rotateToken, {});
 
     const listRes = await panelFetch(
       "/dashboard/projects",
       settings.cookieHeader,
     );
     if (!listRes.ok) {
-      const err = `Projects list failed (${listRes.status}) — cookie may be expired.`;
+      const error = `Projects list failed (${listRes.status}) — cookie may be expired.`;
       await ctx.runMutation(internal.syncInternal.patchSettings, {
-        lastError: err,
+        lastError: error,
       });
-      throw new Error(err);
+      return { ok: false, error };
     }
     const listHtml = await listRes.text();
     let ids = [
@@ -148,7 +164,11 @@ export const syncAll = action({
       ids = existing.map((p) => p.nizekId);
     }
     if (ids.length === 0) {
-      throw new Error("No projects found — check cookie / login.");
+      const error = "No projects found — check cookie / login.";
+      await ctx.runMutation(internal.syncInternal.patchSettings, {
+        lastError: error,
+      });
+      return { ok: false, error };
     }
 
     const projects: Array<{
@@ -159,8 +179,9 @@ export const syncAll = action({
       taskCount: number;
       color: string;
     }> = [];
-    const tasks: Array<ReturnType<typeof extractTasks>[number] & { nizekId: string }> =
-      [];
+    const tasks: Array<
+      ReturnType<typeof extractTasks>[number] & { nizekId: string }
+    > = [];
 
     const known = await ctx.runQuery(api.projects.list, {});
     const enabledMap = new Map(known.map((p) => [p.nizekId, p.enabled]));
@@ -212,17 +233,16 @@ export const syncAll = action({
       })),
     });
 
-    return { projects: projects.length, tasks: tasks.length };
+    return { ok: true, projects: projects.length, tasks: tasks.length };
   },
 });
 
 export const rotateTokenInternal = internalAction({
   args: {},
   handler: async (ctx) => {
-    try {
-      await ctx.runAction(api.nizekActions.rotateToken, {});
-    } catch (e) {
-      console.warn("scheduled rotate failed", e);
+    const result = await ctx.runAction(api.nizekActions.rotateToken, {});
+    if (!result.ok) {
+      console.warn("scheduled rotate failed:", result.error);
     }
   },
 });
