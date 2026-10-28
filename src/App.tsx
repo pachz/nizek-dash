@@ -111,15 +111,28 @@ export default function App() {
 
   return (
     <div className="app">
-      <div className="atmosphere" aria-hidden />
-      <header className="top">
-        <div className="brand-block">
-          <p className="brand">Nizek+</p>
-          <h1>Combined board</h1>
-          <p className="lede">
-            All projects, one pipeline — search, filter, and toggle what you see.
-          </p>
+      <div className="atmosphere" aria-hidden>
+        <div className="orb orb-a" />
+        <div className="orb orb-b" />
+      </div>
+
+      <header className="topbar glass-strong">
+        <div className="brand">
+          <img
+            className="brand-mark"
+            src="/nizek-logo.png"
+            alt="Nizek"
+            width={42}
+            height={42}
+          />
+          <div className="brand-copy">
+            <p className="brand-name">
+              Nizek<span>+</span>
+            </p>
+            <p className="brand-sub">Combined board</p>
+          </div>
         </div>
+
         <div className="top-actions">
           <label className="search">
             <span className="sr-only">Search</span>
@@ -141,6 +154,7 @@ export default function App() {
             type="button"
             className="ghost"
             onClick={() => setPanelOpen((v) => !v)}
+            data-on={panelOpen}
           >
             Session
           </button>
@@ -203,7 +217,7 @@ export default function App() {
       </div>
 
       {panelOpen ? (
-        <section className="session-panel">
+        <section className="session-panel glass">
           <div>
             <h2>Auth bridge</h2>
             <p>
@@ -263,7 +277,7 @@ export default function App() {
         </section>
       ) : null}
 
-      <section className="projects-strip">
+      <section className="projects-strip glass">
         <div className="strip-head">
           <h2>Projects</h2>
           <div className="row">
@@ -311,7 +325,7 @@ export default function App() {
         </div>
       </section>
 
-      <section className="filters">
+      <section className="filters glass">
         <div className="filter-group">
           <span>Stages</span>
           <div className="chips">
