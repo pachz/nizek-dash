@@ -429,6 +429,11 @@ function AdminPanel({ onLock }: { onLock: () => void }) {
                       className="ghost"
                       data-on={repo.enabled}
                       disabled={pending}
+                      title={
+                        repo.enabled
+                          ? "Click to disable sync for this repo"
+                          : "Click to enable sync for this repo"
+                      }
                       onClick={() =>
                         void runJob(
                           repo.enabled ? "Disabling…" : "Enabling…",
@@ -438,13 +443,13 @@ function AdminPanel({ onLock }: { onLock: () => void }) {
                               enabled: !repo.enabled,
                             });
                             showOk(
-                              `${repo.fullName} ${repo.enabled ? "off" : "on"}`,
+                              `${repo.fullName} ${repo.enabled ? "disabled" : "enabled"}`,
                             );
                           },
                         )
                       }
                     >
-                      {repo.enabled ? "Enabled" : "Disabled"}
+                      {repo.enabled ? "Sync on" : "Sync off — click to enable"}
                     </button>
                     <button
                       type="button"

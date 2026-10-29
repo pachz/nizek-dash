@@ -139,6 +139,7 @@ export const syncCommits = action({
     try {
       const token = await ctx.runQuery(internal.commits.getGithubToken, {});
       if (!token) {
+        console.warn("syncCommits: no GitHub token");
         return {
           ok: false,
           error: "Save a GitHub personal access token in Admin first.",
@@ -146,8 +147,19 @@ export const syncCommits = action({
       }
       const repos = await ctx.runQuery(internal.commits.listEnabledRepos, {});
       if (repos.length === 0) {
-        return { ok: false, error: "Add and enable at least one git repo." };
+        console.warn(
+          "syncCommits: no enabled repos (toggle Enabled on a repo in Admin)",
+        );
+        return {
+          ok: false,
+          error:
+            "No enabled repos. In Admin, click the repo’s Disabled button so it shows Enabled, then sync again.",
+        };
       }
+
+      console.log(
+        `syncCommits: starting ${repos.length} repo(s): ${repos.map((r) => r.fullName).join(", ")}`,
+      );
 
       let inserted = 0;
       let updated = 0;
@@ -155,6 +167,7 @@ export const syncCommits = action({
 
       for (const repo of repos) {
         try {
+          console.log(`syncCommits: fetching ${repo.fullName}…`);
           const floor = new Date(Date.now() - BACKFILL_MS).toISOString();
           const sinceIso =
             repo.syncSince && repo.syncSince > floor
@@ -208,8 +221,12 @@ export const syncCommits = action({
             syncSince: nextSince,
             defaultBranch: meta.default_branch,
           });
+          console.log(
+            `syncCommits: ${repo.fullName} done · ${branches.length} branches · since ${sinceIso}`,
+          );
         } catch (e) {
           const msg = e instanceof Error ? e.message : String(e);
+          console.warn(`syncCommits: ${repo.fullName} failed:`, msg);
           errors.push(`${repo.fullName}: ${msg}`);
           await ctx.runMutation(internal.commits.patchRepoSync, {
             repoId: repo._id,
@@ -228,6 +245,9 @@ export const syncCommits = action({
       if (errors.length && inserted + updated === 0) {
         return { ok: false, error: errors.join(" · ") };
       }
+      console.log(
+        `syncCommits: ok · +${inserted} / ~${updated} · errors ${errors.length}`,
+      );
       return { ok: true, repos: repos.length, inserted, updated };
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
