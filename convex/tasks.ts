@@ -86,12 +86,15 @@ export const listForBoard = query({
     priorities: v.optional(v.array(v.string())),
     assignees: v.optional(v.array(v.string())),
     activeSprintOnly: v.optional(v.boolean()),
+    /** Client-side project filter. When omitted, all synced projects are included. */
+    projectIds: v.optional(v.array(v.string())),
   },
   handler: async (ctx, args) => {
     const projects = await ctx.db.query("projects").take(100);
-    const enabled = new Set(
-      projects.filter((p) => p.enabled).map((p) => p.nizekId),
-    );
+    const enabled =
+      args.projectIds !== undefined
+        ? new Set(args.projectIds)
+        : new Set(projects.map((p) => p.nizekId));
     const projectMeta = new Map(
       projects.map((p) => [
         p.nizekId,
@@ -143,12 +146,15 @@ export const listForBoard = query({
 });
 
 export const filterOptions = query({
-  args: {},
-  handler: async (ctx) => {
+  args: {
+    projectIds: v.optional(v.array(v.string())),
+  },
+  handler: async (ctx, args) => {
     const projects = await ctx.db.query("projects").take(100);
-    const enabled = new Set(
-      projects.filter((p) => p.enabled).map((p) => p.nizekId),
-    );
+    const enabled =
+      args.projectIds !== undefined
+        ? new Set(args.projectIds)
+        : new Set(projects.map((p) => p.nizekId));
     const tasks = await ctx.db.query("tasks").take(2000);
     const relevant = tasks.filter((t) => enabled.has(t.projectId));
     return {

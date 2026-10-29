@@ -1,8 +1,9 @@
-import { StrictMode } from "react";
+import { StrictMode, useSyncExternalStore } from "react";
 import { createRoot } from "react-dom/client";
 import { ConvexProvider, ConvexReactClient } from "convex/react";
 import "./index.css";
 import App from "./App.tsx";
+import Admin from "./Admin.tsx";
 
 const convexUrl = import.meta.env.VITE_CONVEX_URL;
 if (!convexUrl) {
@@ -13,10 +14,27 @@ if (!convexUrl) {
 
 const convex = new ConvexReactClient(convexUrl);
 
+function subscribePath(onStoreChange: () => void) {
+  window.addEventListener("popstate", onStoreChange);
+  return () => window.removeEventListener("popstate", onStoreChange);
+}
+
+function getPath() {
+  return window.location.pathname;
+}
+
+function Root() {
+  const path = useSyncExternalStore(subscribePath, getPath, () => "/");
+  if (path === "/admin" || path.startsWith("/admin/")) {
+    return <Admin />;
+  }
+  return <App />;
+}
+
 createRoot(document.getElementById("root")!).render(
   <StrictMode>
     <ConvexProvider client={convex}>
-      <App />
+      <Root />
     </ConvexProvider>
   </StrictMode>,
 );
