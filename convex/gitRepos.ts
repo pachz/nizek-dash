@@ -1,5 +1,5 @@
 import { v } from "convex/values";
-import { mutation, query } from "./_generated/server";
+import { internalQuery, mutation, query } from "./_generated/server";
 
 function parseFullName(input: string): { owner: string; name: string; fullName: string } {
   const cleaned = input
@@ -20,6 +20,22 @@ export const list = query({
   args: {},
   handler: async (ctx) => {
     return await ctx.db.query("gitRepos").take(200);
+  },
+});
+
+export const reposForProject = internalQuery({
+  args: { projectId: v.string() },
+  handler: async (ctx, args) => {
+    const repos = await ctx.db.query("gitRepos").take(200);
+    return repos
+      .filter((r) => r.projectIds.includes(args.projectId))
+      .map((r) => ({
+        owner: r.owner,
+        name: r.name,
+        fullName: r.fullName,
+        defaultBranch: r.defaultBranch ?? "main",
+        enabled: r.enabled,
+      }));
   },
 });
 

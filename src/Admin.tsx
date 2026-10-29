@@ -167,6 +167,9 @@ function AdminPanel({ onLock }: { onLock: () => void }) {
           <a className="ghost" href="/commits">
             Commits
           </a>
+          <a className="ghost" href="/release">
+            Release
+          </a>
           <button
             type="button"
             className="ghost"

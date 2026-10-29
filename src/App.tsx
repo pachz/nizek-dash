@@ -142,6 +142,9 @@ export default function App() {
           <a className="ghost" href="/commits">
             Commits
           </a>
+          <a className="ghost" href="/release">
+            Release
+          </a>
           <a className="ghost" href="/admin">
             Admin
           </a>

@@ -132,6 +132,9 @@ export default function Commits() {
           <a className="ghost" href="/">
             Board
           </a>
+          <a className="ghost" href="/release">
+            Release
+          </a>
           <a className="ghost" href="/admin">
             Admin
           </a>

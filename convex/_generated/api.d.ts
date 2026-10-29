@@ -17,6 +17,7 @@ import type * as lib_taskCode from "../lib/taskCode.js";
 import type * as matchActions from "../matchActions.js";
 import type * as nizekActions from "../nizekActions.js";
 import type * as projects from "../projects.js";
+import type * as releaseActions from "../releaseActions.js";
 import type * as seed from "../seed.js";
 import type * as settings from "../settings.js";
 import type * as syncInternal from "../syncInternal.js";
@@ -38,6 +39,7 @@ declare const fullApi: ApiFromModules<{
   matchActions: typeof matchActions;
   nizekActions: typeof nizekActions;
   projects: typeof projects;
+  releaseActions: typeof releaseActions;
   seed: typeof seed;
   settings: typeof settings;
   syncInternal: typeof syncInternal;
