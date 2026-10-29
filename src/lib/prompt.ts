@@ -22,7 +22,6 @@ export type PromptTask = {
   attachments?: Array<{ name: string; url: string }>;
   comments?: Array<{ author: string; body: string; at?: string | null }>;
   proofOfWork?: Array<{ name: string; author?: string | null }>;
-  activity?: Array<{ author: string; summary: string; at?: string | null }>;
 };
 
 export function buildTaskPrompt(task: PromptTask): string {
@@ -85,14 +84,6 @@ export function buildTaskPrompt(task: PromptTask): string {
     for (const c of task.comments) {
       const when = c.at ? ` (${formatWhen(c.at)})` : "";
       lines.push(`- ${c.author}${when}: ${c.body}`);
-    }
-  }
-
-  if (task.activity?.length) {
-    lines.push("", "## Recent activity");
-    for (const a of task.activity.slice(0, 12)) {
-      const when = a.at ? ` (${formatWhen(a.at)})` : "";
-      lines.push(`- ${a.author}${when}: ${a.summary}`);
     }
   }
 
