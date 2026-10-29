@@ -314,65 +314,6 @@ export default function Commits() {
           ) : null}
         </article>
 
-        <article className="analytics-card glass">
-          <header>
-            <h2>Top authors</h2>
-          </header>
-          <ul className="rank-list">
-            {(aggregates?.topAuthors ?? []).map((a, i) => (
-              <li key={a.name}>
-                <span className="rank">#{i + 1}</span>
-                <span className="rank-name">{a.name}</span>
-                <span className="rank-bar-wrap">
-                  <span
-                    className="rank-bar"
-                    style={{
-                      width: `${Math.round(
-                        (a.count /
-                          Math.max(1, aggregates?.topAuthors[0]?.count ?? 1)) *
-                          100,
-                      )}%`,
-                    }}
-                  />
-                </span>
-                <strong>{a.count}</strong>
-              </li>
-            ))}
-            {aggregates && aggregates.topAuthors.length === 0 ? (
-              <li className="muted">No authors in window</li>
-            ) : null}
-          </ul>
-        </article>
-
-        <article className="analytics-card glass">
-          <header>
-            <h2>Top repos</h2>
-          </header>
-          <ul className="rank-list">
-            {(aggregates?.topRepos ?? []).map((r, i) => (
-              <li key={r.name}>
-                <span className="rank">#{i + 1}</span>
-                <span className="rank-name">{r.name}</span>
-                <span className="rank-bar-wrap">
-                  <span
-                    className="rank-bar"
-                    style={{
-                      width: `${Math.round(
-                        (r.count /
-                          Math.max(1, aggregates?.topRepos[0]?.count ?? 1)) *
-                          100,
-                      )}%`,
-                    }}
-                  />
-                </span>
-                <strong>{r.count}</strong>
-              </li>
-            ))}
-            {aggregates && aggregates.topRepos.length === 0 ? (
-              <li className="muted">No repos in window</li>
-            ) : null}
-          </ul>
-        </article>
       </section>
 
       <section className="commits-workspace">
