@@ -7,8 +7,8 @@ import {
   buildReleaseBrief,
   buildReleaseDoc,
   docsImportUrl,
+  formatDocDate,
   formatRangeLabel,
-  generateViaDocsApi,
   suggestReleaseMeta,
   type ReleaseCommit,
   type ReleaseDoc,
@@ -26,11 +26,9 @@ const STEPS: { id: Step; label: string; hint: string }[] = [
   { id: 4, label: "Release", hint: "Generate the notes" },
 ];
 
-const DOCS_URL =
-  (import.meta.env.VITE_NIZEK_DOCS_URL as string | undefined)?.replace(
-    /\/$/,
-    "",
-  ) || "http://127.0.0.1:5173";
+const DOCS_URL = (
+  import.meta.env.VITE_NIZEK_DOCS_URL as string | undefined
+)?.replace(/\/$/, "");
 
 function startOfDayIso(d: Date) {
   const x = new Date(d);
@@ -138,6 +136,7 @@ export default function ReleaseMaker() {
 
   const suggestMeta = useAction(api.releaseActions.suggestMeta);
   const readProjectVersion = useAction(api.releaseActions.readProjectVersion);
+  const generateDoc = useAction(api.releaseActions.generateDoc);
 
   const project = useMemo(
     () => projects?.find((p) => p.nizekId === projectId) ?? null,
@@ -250,14 +249,26 @@ export default function ReleaseMaker() {
         setStatus("Structured release notes ready.");
         return;
       }
-      const generated = await generateViaDocsApi({
-        docsUrl: DOCS_URL,
+
+      const result = await generateDoc({
         brief: nextBrief,
-        projectHint: meta.projectName,
-        authorHint: meta.author,
+        projectName: meta.projectName,
+        version: meta.version,
+        author: meta.author,
+        date: formatDocDate(meta.toIso),
       });
-      setDoc(generated);
-      setStatus("Generated via Nizek Docs.");
+
+      if (result.ok) {
+        setDoc(result.doc as ReleaseDoc);
+        setStatus("Generated with AI (Nizek Docs schema).");
+        return;
+      }
+
+      const structured = buildReleaseDoc(selectedTasks, selectedCommits, meta);
+      setDoc(structured);
+      setMode("structured");
+      setError(`${result.error} — fell back to structured notes.`);
+      setStatus("Structured release notes ready.");
     } catch (err) {
       const structured = buildReleaseDoc(selectedTasks, selectedCommits, meta);
       setDoc(structured);
@@ -265,7 +276,7 @@ export default function ReleaseMaker() {
       setError(
         err instanceof Error
           ? `${err.message} — fell back to structured notes.`
-          : "Docs API unavailable — fell back to structured notes.",
+          : "AI unavailable — fell back to structured notes.",
       );
       setStatus("Structured release notes ready.");
     } finally {
@@ -274,7 +285,7 @@ export default function ReleaseMaker() {
   }
 
   function openInDocs() {
-    if (!doc) return;
+    if (!doc || !DOCS_URL) return;
     window.open(docsImportUrl(DOCS_URL, doc), "_blank", "noopener,noreferrer");
   }
 
@@ -844,8 +855,9 @@ export default function ReleaseMaker() {
               <div>
                 <h2>Generate release notes</h2>
                 <p>
-                  Uses the Nizek Docs builder ({DOCS_URL}) with kind{" "}
-                  <code>release-notes</code>.
+                  AI runs via Convex OpenAI and outputs Nizek Docs{" "}
+                  <code>release-notes</code> JSON
+                  {DOCS_URL ? ` · open in ${DOCS_URL}` : ""}.
                 </p>
               </div>
             </header>
@@ -857,7 +869,7 @@ export default function ReleaseMaker() {
                 data-on={mode === "ai"}
                 onClick={() => setMode("ai")}
               >
-                Docs AI
+                AI
               </button>
               <button
                 type="button"
@@ -893,9 +905,15 @@ export default function ReleaseMaker() {
               </button>
               {doc ? (
                 <>
-                  <button type="button" className="primary" onClick={openInDocs}>
-                    Open in Docs
-                  </button>
+                  {DOCS_URL ? (
+                    <button
+                      type="button"
+                      className="primary"
+                      onClick={openInDocs}
+                    >
+                      Open in Docs
+                    </button>
+                  ) : null}
                   <button
                     type="button"
                     className="ghost"

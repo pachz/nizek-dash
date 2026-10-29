@@ -486,44 +486,8 @@ export function suggestReleaseMeta(opts: {
   };
 }
 
-export function docsApiBase(docsUrl: string) {
-  const trimmed = docsUrl.replace(/\/$/, "");
-  if (trimmed.includes("127.0.0.1") || trimmed.includes("localhost")) {
-    return trimmed.includes(":8787") ? trimmed : "http://127.0.0.1:8787";
-  }
-  return trimmed;
-}
-
 export function docsImportUrl(docsUrl: string, doc: ReleaseDoc) {
   const base = docsUrl.replace(/\/$/, "");
   const payload = btoa(unescape(encodeURIComponent(JSON.stringify(doc))));
   return `${base}/#import=${payload}`;
-}
-
-export async function generateViaDocsApi(opts: {
-  docsUrl: string;
-  brief: string;
-  projectHint: string;
-  authorHint: string;
-}): Promise<ReleaseDoc> {
-  const api = docsApiBase(opts.docsUrl);
-  const res = await fetch(`${api}/api/generate`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      kind: "release-notes",
-      brief: opts.brief,
-      coverEnabled: true,
-      projectHint: opts.projectHint,
-      authorHint: opts.authorHint,
-    }),
-  });
-  const data = (await res.json()) as {
-    error?: string;
-    doc?: ReleaseDoc;
-  };
-  if (!res.ok || !data.doc) {
-    throw new Error(data.error || `Docs API failed (${res.status})`);
-  }
-  return data.doc;
 }

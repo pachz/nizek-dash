@@ -439,3 +439,148 @@ Rules:
     }
   },
 });
+
+/** Full Nizek Docs release-notes JSON via Convex OpenAI (no localhost Docs API). */
+export const generateDoc = action({
+  args: {
+    brief: v.string(),
+    projectName: v.string(),
+    version: v.string(),
+    author: v.string(),
+    date: v.string(),
+  },
+  handler: async (_ctx, args): Promise<Result<{ doc: Record<string, unknown> }>> => {
+    const apiKey = openaiKey();
+    if (!apiKey) {
+      return {
+        ok: false,
+        error:
+          "Set OPENAI_API_KEY in the Convex dashboard environment variables.",
+      };
+    }
+
+    const brief = args.brief.trim();
+    if (!brief) {
+      return { ok: false, error: "Brief is empty." };
+    }
+
+    const system = `You are the Nizek Docs generator for Nizek Startups.
+Return ONLY one JSON object for kind "release-notes" that the Nizek Docs renderer can preview/print.
+
+Root schema:
+{
+  "kind": "release-notes",
+  "meta": {
+    "title": string,
+    "subtitle"?: string,
+    "project": string,
+    "version": string,
+    "date": string,
+    "author": string,
+    "status"?: "draft"|"review"|"approved"|"proposed",
+    "classification"?: string,
+    "tags"?: string[]
+  },
+  "cover": {
+    "enabled": true,
+    "eyebrow"?: string,
+    "headline"?: string,
+    "description"?: string,
+    "recipient"?: string
+  },
+  "kicker"?: string,
+  "sections": [
+    { "type": "paragraph", "title"?: string, "body": string }
+    | { "type": "list", "title": string, "items": string[], "ordered"?: boolean, "breakBefore"?: boolean }
+    | { "type": "callout", "title"?: string, "body": string }
+  ]
+}
+
+Rules:
+- Cover enabled. Concrete voice, no fluff, no emojis.
+- Structure: Highlights paragraph → New / Improvements / Fixes lists as available → optional "Also landed on main" for unmatched commits → Breaking list only if needed → Support callout.
+- Use the provided project/version/author/date exactly in meta (version bare, no leading v).
+- Prefer task wording from the brief; use main commits as evidence.
+- Dates: "D MMM YYYY".`;
+
+    try {
+      const res = await fetch("https://api.openai.com/v1/chat/completions", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${apiKey}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          model: process.env.OPENAI_MODEL?.trim() || "gpt-4o-mini",
+          temperature: 0.35,
+          response_format: { type: "json_object" },
+          messages: [
+            { role: "system", content: system },
+            {
+              role: "user",
+              content: JSON.stringify({
+                kind: "release-notes",
+                coverEnabled: true,
+                project: args.projectName,
+                version: stripV(args.version),
+                author: args.author,
+                date: args.date,
+                brief,
+              }),
+            },
+          ],
+        }),
+      });
+
+      if (!res.ok) {
+        const body = await res.text();
+        return {
+          ok: false,
+          error: `OpenAI ${res.status}: ${body.slice(0, 280)}`,
+        };
+      }
+
+      const json = (await res.json()) as {
+        choices?: Array<{ message?: { content?: string } }>;
+      };
+      const content = json.choices?.[0]?.message?.content ?? "{}";
+      let doc: Record<string, unknown>;
+      try {
+        doc = JSON.parse(content) as Record<string, unknown>;
+      } catch {
+        return { ok: false, error: "AI returned invalid JSON." };
+      }
+
+      if (doc.kind !== "release-notes") {
+        doc.kind = "release-notes";
+      }
+      if (!Array.isArray(doc.sections) || doc.sections.length === 0) {
+        return { ok: false, error: "AI returned no sections." };
+      }
+
+      const meta =
+        typeof doc.meta === "object" && doc.meta !== null
+          ? (doc.meta as Record<string, unknown>)
+          : {};
+      meta.project = args.projectName;
+      meta.version = stripV(args.version);
+      meta.author = args.author;
+      meta.date = args.date;
+      doc.meta = meta;
+
+      const cover =
+        typeof doc.cover === "object" && doc.cover !== null
+          ? (doc.cover as Record<string, unknown>)
+          : {};
+      cover.enabled = true;
+      doc.cover = cover;
+
+      return { ok: true, doc };
+    } catch (e) {
+      return {
+        ok: false,
+        error: e instanceof Error ? e.message : "AI request failed.",
+      };
+    }
+  },
+});
