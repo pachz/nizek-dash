@@ -134,6 +134,9 @@ export default function App() {
           {enabledCount}/{projects?.length ?? 0} projects
         </span>
         <span className="pill">{tasks?.length ?? 0} cards</span>
+        {prefs.activeSprintOnly ? (
+          <span className="pill soft">Active sprint filter on</span>
+        ) : null}
       </div>
 
       <section className="projects-strip glass">
@@ -260,11 +263,38 @@ export default function App() {
         {tasks === undefined ? (
           <div className="loading">Loading board…</div>
         ) : (
-          <Kanban
-            tasks={tasks}
-            stages={prefs.visibleStages}
-            onSelect={(task) => setSelectedTaskId(task.nizekId)}
-          />
+          <>
+            {tasks.length === 0 && enabledCount > 0 ? (
+              <div className="board-empty glass" role="status">
+                {prefs.activeSprintOnly ? (
+                  <>
+                    <p>
+                      No cards match — <strong>Active sprint</strong> is on, and
+                      none of the selected projects have tasks in an active /
+                      in-progress sprint. Project totals still count finished
+                      and unsprinted work.
+                    </p>
+                    <button
+                      type="button"
+                      className="primary solid"
+                      onClick={() => patchPrefs({ activeSprintOnly: false })}
+                    >
+                      Turn off Active sprint
+                    </button>
+                  </>
+                ) : (
+                  <p>
+                    No cards match the current project / stage / type filters.
+                  </p>
+                )}
+              </div>
+            ) : null}
+            <Kanban
+              tasks={tasks}
+              stages={prefs.visibleStages}
+              onSelect={(task) => setSelectedTaskId(task.nizekId)}
+            />
+          </>
         )}
       </main>
 
