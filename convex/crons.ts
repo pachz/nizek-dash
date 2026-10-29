@@ -10,4 +10,11 @@ crons.interval(
   internal.nizekActions.rotateTokenInternal,
 );
 
+// Refresh projects & tasks from panel (also rotates JWT inside syncAll)
+crons.interval(
+  "sync projects and tasks",
+  { minutes: 10 },
+  internal.nizekActions.syncAllInternal,
+);
+
 export default crons;

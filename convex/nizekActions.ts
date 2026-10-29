@@ -390,3 +390,17 @@ export const rotateTokenInternal = internalAction({
     }
   },
 });
+
+export const syncAllInternal = internalAction({
+  args: {},
+  handler: async (ctx) => {
+    const result = await ctx.runAction(api.nizekActions.syncAll, {});
+    if (!result.ok) {
+      console.warn("scheduled sync failed:", result.error);
+    } else {
+      console.log(
+        `scheduled sync ok: ${result.projects} projects · ${result.tasks} tasks`,
+      );
+    }
+  },
+});
