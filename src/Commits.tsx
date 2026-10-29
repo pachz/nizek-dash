@@ -1,13 +1,23 @@
-import { useDeferredValue, useMemo, useState } from "react";
+import { useDeferredValue, useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery } from "convex/react";
 import { api } from "../convex/_generated/api";
 import type { Id } from "../convex/_generated/dataModel";
 import { TaskDetail } from "./components/TaskDetail";
+import {
+  ConsistencyHeatmap,
+  ConsistencyLines,
+  DailyVolumeChart,
+} from "./components/commits/Charts";
 
 type MatchStatus = "all" | "matched" | "suggested" | "unmatched";
 
 function subject(message: string) {
   return message.split("\n")[0]?.trim() || "(empty)";
+}
+
+function body(message: string) {
+  const parts = message.split("\n");
+  return parts.slice(1).join("\n").trim();
 }
 
 function shortSha(sha: string) {
@@ -17,6 +27,7 @@ function shortSha(sha: string) {
 function formatWhen(iso: string) {
   try {
     return new Date(iso).toLocaleString(undefined, {
+      weekday: "short",
       month: "short",
       day: "numeric",
       hour: "2-digit",
@@ -25,6 +36,15 @@ function formatWhen(iso: string) {
   } catch {
     return iso;
   }
+}
+
+function matchTone(summary: {
+  accepted: number;
+  suggested: number;
+}): "accepted" | "suggested" | "none" {
+  if (summary.accepted > 0) return "accepted";
+  if (summary.suggested > 0) return "suggested";
+  return "none";
 }
 
 export default function Commits() {
@@ -38,22 +58,44 @@ export default function Commits() {
   const [matchStatus, setMatchStatus] = useState<MatchStatus>("all");
   const [search, setSearch] = useState("");
   const deferredSearch = useDeferredValue(search);
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(25);
+  const [selectedId, setSelectedId] = useState<Id<"commits"> | null>(null);
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
+  const [aggDays, setAggDays] = useState(60);
 
   const setMatchStatusMut = useMutation(api.commits.setMatchStatus);
+
+  useEffect(() => {
+    setPage(1);
+  }, [repoId, projectId, matchStatus, deferredSearch, pageSize]);
+
+  const aggregates = useQuery(api.commits.aggregates, {
+    repoId: repoId || undefined,
+    projectId: projectId || undefined,
+    days: aggDays,
+  });
 
   const feed = useQuery(api.commits.listForDashboard, {
     repoId: repoId || undefined,
     projectId: projectId || undefined,
     matchStatus,
     search: deferredSearch || undefined,
-    limit: 150,
+    page,
+    pageSize,
   });
+
+  const detail = useQuery(
+    api.commits.getCommit,
+    selectedId ? { commitId: selectedId } : "skip",
+  );
 
   const projectName = useMemo(() => {
     const map = new Map((projects ?? []).map((p) => [p.nizekId, p.name]));
     return (id: string) => map.get(id) ?? id.slice(0, 8);
   }, [projects]);
+
+  const days = aggregates?.daily.map((d) => d.day) ?? [];
 
   return (
     <div className="app commits-app">
@@ -75,7 +117,7 @@ export default function Commits() {
             <p className="brand-name">
               Nizek<span>+</span>
             </p>
-            <p className="brand-sub">Commits</p>
+            <p className="brand-sub">Commit intelligence</p>
           </div>
         </div>
         <div className="top-actions">
@@ -96,21 +138,53 @@ export default function Commits() {
         </div>
       </header>
 
-      <div className="status-row">
-        <span className="pill">{stats?.total ?? "…"} commits · 60d</span>
-        <span className="pill soft">
-          {stats?.matchedPct ?? 0}% accepted
-        </span>
-        <span className="pill soft">{stats?.suggested ?? 0} suggested</span>
-        <span className="pill soft">{stats?.unmatched ?? 0} unmatched</span>
-        {githubStatus?.lastCommitSyncAt ? (
-          <span className="pill soft">
-            Synced {formatWhen(new Date(githubStatus.lastCommitSyncAt).toISOString())}
-          </span>
-        ) : (
-          <span className="pill">No commit sync yet — use Admin</span>
-        )}
-      </div>
+      <section className="kpi-row">
+        <article className="kpi glass">
+          <span className="kpi-label">Commits</span>
+          <strong>{aggregates?.total ?? stats?.total ?? "…"}</strong>
+          <em>{aggDays}d window</em>
+        </article>
+        <article className="kpi glass">
+          <span className="kpi-label">Active days</span>
+          <strong>{aggregates?.activeDays ?? "…"}</strong>
+          <em>
+            {aggregates
+              ? `${Math.round((aggregates.activeDays / aggDays) * 100)}% coverage`
+              : "—"}
+          </em>
+        </article>
+        <article className="kpi glass">
+          <span className="kpi-label">Avg / day</span>
+          <strong>{aggregates?.avgPerDay ?? "…"}</strong>
+          <em>streak {aggregates?.currentStreak ?? 0}d</em>
+        </article>
+        <article className="kpi glass">
+          <span className="kpi-label">Matched</span>
+          <strong>{stats?.matchedPct ?? 0}%</strong>
+          <em>
+            {stats?.matched ?? 0} accepted · {stats?.suggested ?? 0} suggested
+          </em>
+        </article>
+        <article className="kpi glass">
+          <span className="kpi-label">Sync</span>
+          <strong className="kpi-sync">
+            {githubStatus?.lastCommitSyncAt
+              ? new Date(githubStatus.lastCommitSyncAt).toLocaleDateString(
+                  undefined,
+                  { month: "short", day: "numeric" },
+                )
+              : "—"}
+          </strong>
+          <em>
+            {githubStatus?.lastCommitSyncAt
+              ? new Date(githubStatus.lastCommitSyncAt).toLocaleTimeString(
+                  undefined,
+                  { hour: "2-digit", minute: "2-digit" },
+                )
+              : "Run sync in Admin"}
+          </em>
+        </article>
+      </section>
 
       <div className="commits-filters glass">
         <label>
@@ -125,6 +199,7 @@ export default function Commits() {
             {(repos ?? []).map((r) => (
               <option key={r._id} value={r._id}>
                 {r.fullName}
+                {!r.enabled ? " (off)" : ""}
               </option>
             ))}
           </select>
@@ -155,98 +230,436 @@ export default function Commits() {
             <option value="unmatched">Unmatched</option>
           </select>
         </label>
+        <label>
+          <span>Window</span>
+          <select
+            value={aggDays}
+            onChange={(e) => setAggDays(Number(e.target.value))}
+          >
+            <option value={30}>30 days</option>
+            <option value={60}>60 days</option>
+            <option value={90}>90 days</option>
+          </select>
+        </label>
+        <label>
+          <span>Page size</span>
+          <select
+            value={pageSize}
+            onChange={(e) => setPageSize(Number(e.target.value))}
+          >
+            <option value={25}>25</option>
+            <option value={50}>50</option>
+            <option value={100}>100</option>
+          </select>
+        </label>
       </div>
 
-      <ul className="commit-feed">
-        {feed === undefined ? (
-          <li className="commit-empty glass">Loading commits…</li>
-        ) : feed.length === 0 ? (
-          <li className="commit-empty glass">
-            No commits in this view. Add repos and sync from Admin.
-          </li>
-        ) : (
-          feed.map((c) => (
-            <li key={c._id} className="commit-card glass">
-              <div className="commit-meta">
-                <a
-                  className="commit-sha"
-                  href={c.htmlUrl}
-                  target="_blank"
-                  rel="noreferrer"
-                >
-                  {shortSha(c.sha)}
-                </a>
-                <span className="pill soft">{c.repoFullName}</span>
-                <span className="muted">{c.authorName}</span>
-                <span className="muted">{formatWhen(c.authoredAt)}</span>
-                {c.branches.slice(0, 3).map((b) => (
-                  <span key={b} className="branch-chip">
-                    {b}
-                  </span>
-                ))}
-                {c.branches.length > 3 ? (
-                  <span className="branch-chip">+{c.branches.length - 3}</span>
-                ) : null}
-              </div>
-              <p className="commit-subject">{subject(c.message)}</p>
-              <div className="commit-matches">
-                {c.matches.length === 0 ? (
-                  <span className="pill">Unmatched</span>
+      <section className="analytics-grid">
+        <article className="analytics-card glass">
+          <header>
+            <h2>Daily volume</h2>
+            <p>Total commits per day across the filtered repos.</p>
+          </header>
+          {aggregates ? (
+            <DailyVolumeChart daily={aggregates.daily} />
+          ) : (
+            <p className="muted chart-loading">Loading chart…</p>
+          )}
+        </article>
+
+        <article className="analytics-card glass">
+          <header>
+            <h2>Consistency by project</h2>
+            <p>Daily cadence per mapped project — click a legend to focus.</p>
+          </header>
+          {aggregates && aggregates.consistency.length > 0 ? (
+            <ConsistencyLines
+              daily={aggregates.daily}
+              consistency={aggregates.consistency}
+            />
+          ) : (
+            <p className="muted chart-loading">
+              Map repos to projects in Admin to unlock this chart.
+            </p>
+          )}
+        </article>
+
+        <article className="analytics-card glass analytics-wide">
+          <header>
+            <h2>Activity heatmap</h2>
+            <p>Day-by-day presence for top projects — denser = more commits.</p>
+          </header>
+          {aggregates && aggregates.consistency.length > 0 ? (
+            <ConsistencyHeatmap
+              consistency={aggregates.consistency}
+              days={days}
+            />
+          ) : (
+            <p className="muted chart-loading">No project activity yet.</p>
+          )}
+          {aggregates && aggregates.consistency.length > 0 ? (
+            <div className="consistency-stats">
+              {aggregates.consistency.map((c) => (
+                <div key={c.projectId} className="consistency-stat">
+                  <span className="dot" style={{ background: c.color }} />
+                  <strong>{c.name}</strong>
+                  <span>{c.commits} commits</span>
+                  <span>{c.coveragePct}% days</span>
+                  <span>streak {c.currentStreak}d</span>
+                  <span>best {c.longestStreak}d</span>
+                  <span>avg {c.avgPerActiveDay}/active</span>
+                </div>
+              ))}
+            </div>
+          ) : null}
+        </article>
+
+        <article className="analytics-card glass">
+          <header>
+            <h2>Top authors</h2>
+          </header>
+          <ul className="rank-list">
+            {(aggregates?.topAuthors ?? []).map((a, i) => (
+              <li key={a.name}>
+                <span className="rank">#{i + 1}</span>
+                <span className="rank-name">{a.name}</span>
+                <span className="rank-bar-wrap">
+                  <span
+                    className="rank-bar"
+                    style={{
+                      width: `${Math.round(
+                        (a.count /
+                          Math.max(1, aggregates?.topAuthors[0]?.count ?? 1)) *
+                          100,
+                      )}%`,
+                    }}
+                  />
+                </span>
+                <strong>{a.count}</strong>
+              </li>
+            ))}
+            {aggregates && aggregates.topAuthors.length === 0 ? (
+              <li className="muted">No authors in window</li>
+            ) : null}
+          </ul>
+        </article>
+
+        <article className="analytics-card glass">
+          <header>
+            <h2>Top repos</h2>
+          </header>
+          <ul className="rank-list">
+            {(aggregates?.topRepos ?? []).map((r, i) => (
+              <li key={r.name}>
+                <span className="rank">#{i + 1}</span>
+                <span className="rank-name">{r.name}</span>
+                <span className="rank-bar-wrap">
+                  <span
+                    className="rank-bar"
+                    style={{
+                      width: `${Math.round(
+                        (r.count /
+                          Math.max(1, aggregates?.topRepos[0]?.count ?? 1)) *
+                          100,
+                      )}%`,
+                    }}
+                  />
+                </span>
+                <strong>{r.count}</strong>
+              </li>
+            ))}
+            {aggregates && aggregates.topRepos.length === 0 ? (
+              <li className="muted">No repos in window</li>
+            ) : null}
+          </ul>
+        </article>
+      </section>
+
+      <section className="commits-workspace">
+        <div className="commits-list-pane glass">
+          <header className="list-pane-head">
+            <div>
+              <h2>Commits</h2>
+              <p>
+                {feed
+                  ? `${feed.total} matching · page ${feed.page}/${feed.pageCount}`
+                  : "Loading…"}
+              </p>
+            </div>
+            <div className="pager">
+              <button
+                type="button"
+                className="ghost"
+                disabled={!feed || feed.page <= 1}
+                onClick={() => setPage((p) => Math.max(1, p - 1))}
+              >
+                Prev
+              </button>
+              <span className="pill soft">
+                {feed?.page ?? "—"} / {feed?.pageCount ?? "—"}
+              </span>
+              <button
+                type="button"
+                className="ghost"
+                disabled={!feed || feed.page >= feed.pageCount}
+                onClick={() =>
+                  setPage((p) =>
+                    feed ? Math.min(feed.pageCount, p + 1) : p + 1,
+                  )
+                }
+              >
+                Next
+              </button>
+            </div>
+          </header>
+
+          <div className="commit-table-wrap">
+            <table className="commit-table">
+              <thead>
+                <tr>
+                  <th>When</th>
+                  <th>Sha</th>
+                  <th>Message</th>
+                  <th>Author</th>
+                  <th>Repo</th>
+                  <th>Match</th>
+                </tr>
+              </thead>
+              <tbody>
+                {feed === undefined ? (
+                  <tr>
+                    <td colSpan={6} className="muted">
+                      Loading commits…
+                    </td>
+                  </tr>
+                ) : feed.items.length === 0 ? (
+                  <tr>
+                    <td colSpan={6} className="muted">
+                      No commits in this view. Sync from Admin or widen filters.
+                    </td>
+                  </tr>
                 ) : (
-                  c.matches.map((m) => (
-                    <div key={m._id} className="match-chip-row">
-                      <button
-                        type="button"
-                        className={`match-chip method-${m.method} status-${m.status}`}
-                        onClick={() => setSelectedTaskId(m.taskNizekId)}
-                        title={m.reason}
+                  feed.items.map((c) => {
+                    const tone = matchTone(c.matchSummary);
+                    return (
+                      <tr
+                        key={c._id}
+                        data-selected={selectedId === c._id}
+                        onClick={() => setSelectedId(c._id)}
                       >
-                        <strong>{m.taskCode ?? "Task"}</strong>
-                        <span>{m.taskTitle ?? m.taskNizekId.slice(0, 8)}</span>
-                        <em>
-                          {Math.round(m.confidence * 100)}% · {m.method} ·{" "}
-                          {m.status}
-                        </em>
-                      </button>
-                      {m.status === "suggested" ? (
-                        <span className="match-actions">
-                          <button
-                            type="button"
-                            className="ghost"
-                            onClick={() =>
-                              void setMatchStatusMut({
-                                matchId: m._id,
-                                status: "accepted",
-                              })
-                            }
-                          >
-                            Accept
-                          </button>
-                          <button
-                            type="button"
-                            className="ghost"
-                            onClick={() =>
-                              void setMatchStatusMut({
-                                matchId: m._id,
-                                status: "rejected",
-                              })
-                            }
-                          >
-                            Reject
-                          </button>
-                        </span>
-                      ) : null}
-                      <span className="muted tiny">
-                        {projectName(m.projectId)}
-                      </span>
-                    </div>
-                  ))
+                        <td className="col-when">{formatWhen(c.authoredAt)}</td>
+                        <td className="col-sha">
+                          <code>{shortSha(c.sha)}</code>
+                        </td>
+                        <td className="col-msg">
+                          <span className="msg-subject">{subject(c.message)}</span>
+                          {c.branches[0] ? (
+                            <span className="branch-chip">{c.branches[0]}</span>
+                          ) : null}
+                        </td>
+                        <td className="col-author">{c.authorName}</td>
+                        <td className="col-repo">{c.repoFullName}</td>
+                        <td className="col-match">
+                          <span className={`match-pill tone-${tone}`}>
+                            {tone === "accepted"
+                              ? `${c.matchSummary.accepted} accepted`
+                              : tone === "suggested"
+                                ? `${c.matchSummary.suggested} suggested`
+                                : "Unmatched"}
+                          </span>
+                        </td>
+                      </tr>
+                    );
+                  })
                 )}
-              </div>
-            </li>
-          ))
-        )}
-      </ul>
+              </tbody>
+            </table>
+          </div>
+
+          <footer className="list-pane-foot">
+            <div className="pager">
+              <button
+                type="button"
+                className="ghost"
+                disabled={!feed || feed.page <= 1}
+                onClick={() => setPage((p) => Math.max(1, p - 1))}
+              >
+                Prev
+              </button>
+              <span className="muted tiny">
+                Showing{" "}
+                {feed
+                  ? `${(feed.page - 1) * feed.pageSize + 1}–${Math.min(feed.page * feed.pageSize, feed.total)}`
+                  : "—"}{" "}
+                of {feed?.total ?? "—"}
+              </span>
+              <button
+                type="button"
+                className="ghost"
+                disabled={!feed || feed.page >= feed.pageCount}
+                onClick={() =>
+                  setPage((p) =>
+                    feed ? Math.min(feed.pageCount, p + 1) : p + 1,
+                  )
+                }
+              >
+                Next
+              </button>
+            </div>
+          </footer>
+        </div>
+
+        <aside className="commit-detail-pane glass">
+          {!selectedId ? (
+            <div className="detail-empty">
+              <h2>Detail</h2>
+              <p>Select a commit from the list to inspect message, branches, and task matches.</p>
+            </div>
+          ) : detail === undefined ? (
+            <div className="detail-empty">
+              <p className="muted">Loading detail…</p>
+            </div>
+          ) : detail === null ? (
+            <div className="detail-empty">
+              <p className="muted">Commit not found.</p>
+            </div>
+          ) : (
+            <>
+              <header className="detail-head">
+                <div>
+                  <a
+                    className="commit-sha"
+                    href={detail.htmlUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                  >
+                    {shortSha(detail.sha)}
+                  </a>
+                  <span className="pill soft">{detail.repoFullName}</span>
+                </div>
+                <button
+                  type="button"
+                  className="ghost"
+                  onClick={() => setSelectedId(null)}
+                >
+                  Close
+                </button>
+              </header>
+
+              <h3 className="detail-title">{subject(detail.message)}</h3>
+              <dl className="detail-meta">
+                <div>
+                  <dt>Author</dt>
+                  <dd>
+                    {detail.authorName}
+                    {detail.authorEmail ? (
+                      <span className="muted"> · {detail.authorEmail}</span>
+                    ) : null}
+                  </dd>
+                </div>
+                <div>
+                  <dt>When</dt>
+                  <dd>{formatWhen(detail.authoredAt)}</dd>
+                </div>
+                <div>
+                  <dt>SHA</dt>
+                  <dd>
+                    <code>{detail.sha}</code>
+                  </dd>
+                </div>
+                <div>
+                  <dt>Branches</dt>
+                  <dd className="branch-wrap">
+                    {detail.branches.map((b) => (
+                      <span key={b} className="branch-chip">
+                        {b}
+                      </span>
+                    ))}
+                  </dd>
+                </div>
+                <div>
+                  <dt>Mapped projects</dt>
+                  <dd>
+                    {detail.projectIds.length
+                      ? detail.projectIds.map(projectName).join(", ")
+                      : "None"}
+                  </dd>
+                </div>
+              </dl>
+
+              {body(detail.message) ? (
+                <pre className="commit-body">{body(detail.message)}</pre>
+              ) : null}
+
+              <section className="detail-matches">
+                <h4>Task matches</h4>
+                {detail.matches.length === 0 ? (
+                  <p className="muted">No matches yet — run matching in Admin.</p>
+                ) : (
+                  <ul>
+                    {detail.matches.map((m) => (
+                      <li key={m._id} className={`detail-match status-${m.status}`}>
+                        <button
+                          type="button"
+                          className="match-open"
+                          onClick={() => setSelectedTaskId(m.taskNizekId)}
+                        >
+                          <strong>{m.taskCode ?? "Task"}</strong>
+                          <span>{m.taskTitle ?? m.taskNizekId}</span>
+                        </button>
+                        <p className="muted tiny">
+                          {m.projectName ?? projectName(m.projectId)} ·{" "}
+                          {Math.round(m.confidence * 100)}% · {m.method}
+                          {m.model ? ` · ${m.model}` : ""} · {m.status}
+                          {m.stage ? ` · ${m.stage}` : ""}
+                        </p>
+                        <p className="match-reason">{m.reason}</p>
+                        {m.status === "suggested" ? (
+                          <div className="match-actions">
+                            <button
+                              type="button"
+                              className="ghost"
+                              onClick={() =>
+                                void setMatchStatusMut({
+                                  matchId: m._id,
+                                  status: "accepted",
+                                })
+                              }
+                            >
+                              Accept
+                            </button>
+                            <button
+                              type="button"
+                              className="ghost"
+                              onClick={() =>
+                                void setMatchStatusMut({
+                                  matchId: m._id,
+                                  status: "rejected",
+                                })
+                              }
+                            >
+                              Reject
+                            </button>
+                          </div>
+                        ) : null}
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </section>
+
+              <a
+                className="ghost link-btn detail-gh"
+                href={detail.htmlUrl}
+                target="_blank"
+                rel="noreferrer"
+              >
+                Open on GitHub
+              </a>
+            </>
+          )}
+        </aside>
+      </section>
 
       {selectedTaskId ? (
         <TaskDetail
