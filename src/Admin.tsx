@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useAction, useMutation, useQuery } from "convex/react";
 import { api } from "../convex/_generated/api";
+import { AppHeader } from "./components/AppHeader";
 import { isAdminUnlocked, lockAdmin, unlockAdmin } from "./lib/admin";
 
 function friendlyError(err: unknown): string {
@@ -25,14 +26,8 @@ function LoginGate({ onUnlock }: { onUnlock: () => void }) {
         <div className="orb orb-a" />
         <div className="orb orb-b" />
       </div>
+      <AppHeader />
       <section className="admin-gate glass-strong">
-        <img
-          className="brand-mark"
-          src="/nizek-logo.png"
-          alt="Nizek"
-          width={48}
-          height={48}
-        />
         <h1>Admin</h1>
         <p>Session, token, and sync controls.</p>
         <form
@@ -144,80 +139,58 @@ function AdminPanel({ onLock }: { onLock: () => void }) {
         <div className="orb orb-b" />
       </div>
 
-      <header className="topbar glass-strong">
-        <div className="brand">
-          <img
-            className="brand-mark"
-            src="/nizek-logo.png"
-            alt="Nizek"
-            width={42}
-            height={42}
-          />
-          <div className="brand-copy">
-            <p className="brand-name">
-              Nizek<span>+</span>
-            </p>
-            <p className="brand-sub">Admin</p>
-          </div>
-        </div>
-        <div className="top-actions">
-          <a className="ghost" href="/">
-            Board
-          </a>
-          <a className="ghost" href="/commits">
-            Commits
-          </a>
-          <a className="ghost" href="/release">
-            Release
-          </a>
-          <button
-            type="button"
-            className="ghost"
-            onClick={() => {
-              lockAdmin();
-              onLock();
-            }}
-          >
-            Lock
-          </button>
-          <button
-            type="button"
-            className="primary"
-            disabled={pending}
-            onClick={() =>
-              void runJob("Rotating Centrifugo JWT…", async () => {
-                const r = await rotateToken({});
-                if (!r.ok) {
-                  showErr(r.error);
-                  return;
-                }
-                showOk(
-                  `Rotated · sub ${r.sub?.slice(0, 8) ?? "?"} · ${r.email ?? ""}`,
-                );
-              })
-            }
-          >
-            Rotate token
-          </button>
-          <button
-            type="button"
-            className="primary solid"
-            disabled={pending}
-            onClick={() =>
-              void runJob("Syncing projects & tasks…", async () => {
-                const r = await syncAll({});
-                if (!r.ok) {
-                  showErr(r.error);
-                  return;
-                }
-                showOk(`Synced ${r.projects} projects · ${r.tasks} tasks`);
-              })
-            }
-          >
-            Sync now
-          </button>
-        </div>
-      </header>
+      <AppHeader
+        tools={
+          <>
+            <button
+              type="button"
+              className="ghost"
+              onClick={() => {
+                lockAdmin();
+                onLock();
+              }}
+            >
+              Lock
+            </button>
+            <button
+              type="button"
+              className="primary"
+              disabled={pending}
+              onClick={() =>
+                void runJob("Rotating Centrifugo JWT…", async () => {
+                  const r = await rotateToken({});
+                  if (!r.ok) {
+                    showErr(r.error);
+                    return;
+                  }
+                  showOk(
+                    `Rotated · sub ${r.sub?.slice(0, 8) ?? "?"} · ${r.email ?? ""}`,
+                  );
+                })
+              }
+            >
+              Rotate token
+            </button>
+            <button
+              type="button"
+              className="primary solid"
+              disabled={pending}
+              onClick={() =>
+                void runJob("Syncing projects & tasks…", async () => {
+                  const r = await syncAll({});
+                  if (!r.ok) {
+                    showErr(r.error);
+                    return;
+                  }
+                  showOk(`Synced ${r.projects} projects · ${r.tasks} tasks`);
+                })
+              }
+            >
+              Sync now
+            </button>
+          </>
+        }
+      />
 
       <div className="status-row">
         <span className="pill">{tokenLabel}</span>

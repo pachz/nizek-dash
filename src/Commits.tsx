@@ -2,6 +2,7 @@ import { useDeferredValue, useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery } from "convex/react";
 import { api } from "../convex/_generated/api";
 import type { Id } from "../convex/_generated/dataModel";
+import { AppHeader } from "./components/AppHeader";
 import { TaskDetail } from "./components/TaskDetail";
 import {
   ConsistencyHeatmap,
@@ -104,23 +105,8 @@ export default function Commits() {
         <div className="orb orb-b" />
       </div>
 
-      <header className="topbar glass-strong">
-        <div className="brand">
-          <img
-            className="brand-mark"
-            src="/nizek-logo.png"
-            alt="Nizek"
-            width={42}
-            height={42}
-          />
-          <div className="brand-copy">
-            <p className="brand-name">
-              Nizek<span>+</span>
-            </p>
-            <p className="brand-sub">Commit intelligence</p>
-          </div>
-        </div>
-        <div className="top-actions">
+      <AppHeader
+        tools={
           <label className="search">
             <span className="sr-only">Search commits</span>
             <input
@@ -129,17 +115,8 @@ export default function Commits() {
               placeholder="Search message, author, sha…"
             />
           </label>
-          <a className="ghost" href="/">
-            Board
-          </a>
-          <a className="ghost" href="/release">
-            Release
-          </a>
-          <a className="ghost" href="/admin">
-            Admin
-          </a>
-        </div>
-      </header>
+        }
+      />
 
       <section className="kpi-row">
         <article className="kpi glass">

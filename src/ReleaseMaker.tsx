@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useAction, useQuery } from "convex/react";
 import { api } from "../convex/_generated/api";
+import { AppHeader } from "./components/AppHeader";
 import { taskCode } from "./lib/stages";
 import {
   buildReleaseBrief,
@@ -308,34 +309,7 @@ export default function ReleaseMaker() {
         <div className="orb orb-b" />
       </div>
 
-      <header className="topbar glass-strong">
-        <div className="brand">
-          <img
-            className="brand-mark"
-            src="/nizek-logo.png"
-            alt="Nizek"
-            width={42}
-            height={42}
-          />
-          <div className="brand-copy">
-            <p className="brand-name">
-              Nizek<span>+</span>
-            </p>
-            <p className="brand-sub">Release maker</p>
-          </div>
-        </div>
-        <div className="top-actions">
-          <a className="ghost" href="/">
-            Board
-          </a>
-          <a className="ghost" href="/commits">
-            Commits
-          </a>
-          <a className="ghost" href="/admin">
-            Admin
-          </a>
-        </div>
-      </header>
+      <AppHeader />
 
       <section className="release-hero glass">
         <div>
