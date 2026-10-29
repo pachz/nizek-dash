@@ -150,7 +150,7 @@ export function TaskDetail({
         aria-label="Close task details"
         onClick={onClose}
       />
-      <aside className="sheet glass-strong">
+      <aside className="sheet">
         <header className="sheet-head">
           <div className="sheet-head-copy">
             {task ? (

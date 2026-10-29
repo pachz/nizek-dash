@@ -348,19 +348,27 @@ export const fetchTaskDetail = action({
       activity: detail.activity,
     };
 
+    // Only overwrite fields when Panel returned a real value — detail pages
+    // often omit sprint/dates and would otherwise blank out synced board data.
+    const keep = <T,>(next: T | null | undefined) =>
+      next != null && next !== "" ? next : undefined;
+
     await ctx.runMutation(internal.syncInternal.patchTask, {
       nizekId: args.nizekId,
-      description: detail.description,
-      title: detail.title,
-      stage: detail.stage,
-      priority: detail.priority,
-      estimatedMinutes: detail.estimatedMinutes,
-      assigneeName: detail.assigneeName,
-      assigneeImage: detail.assigneeImage,
-      sprintName: detail.sprintName,
-      sprintStatus: detail.sprintStatus,
-      stageEnteredAt: detail.stageEnteredAt,
-      startedAt: detail.startedAt,
+      description: keep(detail.description),
+      title: keep(detail.title),
+      stage: keep(detail.stage),
+      priority: keep(detail.priority),
+      estimatedMinutes:
+        detail.estimatedMinutes != null
+          ? detail.estimatedMinutes
+          : undefined,
+      assigneeName: keep(detail.assigneeName),
+      assigneeImage: keep(detail.assigneeImage),
+      sprintName: keep(detail.sprintName),
+      sprintStatus: keep(detail.sprintStatus),
+      stageEnteredAt: keep(detail.stageEnteredAt),
+      startedAt: keep(detail.startedAt),
       detailExtras: JSON.stringify(extras),
     });
 
