@@ -440,16 +440,137 @@ Rules:
   },
 });
 
-/** Full Nizek Docs release-notes JSON via Convex OpenAI (no localhost Docs API). */
+type CommitInput = {
+  sha: string;
+  subject: string;
+  message?: string;
+  authorName: string;
+  authoredAt: string;
+  repoFullName: string;
+  matched?: string;
+};
+
+type TaskInput = {
+  code: string;
+  title: string;
+  taskType: string;
+  stage: string;
+  description?: string | null;
+  assigneeName?: string | null;
+  viaMainCommit?: boolean;
+};
+
+type CommitDigest = {
+  sha: string;
+  summary: string;
+  kind: string;
+  apiChanges: string[];
+  flowChanges: string[];
+  breaking: string[];
+  productNotes: string[];
+};
+
+async function chatJson(opts: {
+  apiKey: string;
+  system: string;
+  user: unknown;
+  temperature?: number;
+}): Promise<Record<string, unknown>> {
+  const model = process.env.OPENAI_MODEL?.trim() || "gpt-4o-mini";
+  const res = await fetch("https://api.openai.com/v1/chat/completions", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${opts.apiKey}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      model,
+      temperature: opts.temperature ?? 0.3,
+      response_format: { type: "json_object" },
+      messages: [
+        { role: "system", content: opts.system },
+        { role: "user", content: JSON.stringify(opts.user) },
+      ],
+    }),
+  });
+  if (!res.ok) {
+    const body = await res.text();
+    throw new Error(`OpenAI ${res.status}: ${body.slice(0, 280)}`);
+  }
+  const json = (await res.json()) as {
+    choices?: Array<{ message?: { content?: string } }>;
+  };
+  const content = json.choices?.[0]?.message?.content ?? "{}";
+  return JSON.parse(content) as Record<string, unknown>;
+}
+
+function chunk<T>(items: T[], size: number): T[][] {
+  const out: T[][] = [];
+  for (let i = 0; i < items.length; i += size) {
+    out.push(items.slice(i, i + size));
+  }
+  return out;
+}
+
+function normalizeDigest(raw: unknown, fallbackSha: string): CommitDigest {
+  const row =
+    typeof raw === "object" && raw !== null
+      ? (raw as Record<string, unknown>)
+      : {};
+  return {
+    sha: asString(row.sha, fallbackSha).slice(0, 40),
+    summary: asString(row.summary, "Commit landed on main."),
+    kind: asString(row.kind, "other"),
+    apiChanges: asStringArray(row.apiChanges),
+    flowChanges: asStringArray(row.flowChanges),
+    breaking: asStringArray(row.breaking),
+    productNotes: asStringArray(row.productNotes),
+  };
+}
+
+/**
+ * Thorough Nizek Docs release-notes JSON:
+ * 1) digest each main commit (API / flow / product signals)
+ * 2) compose a long release document from digests + tasks
+ */
 export const generateDoc = action({
   args: {
-    brief: v.string(),
     projectName: v.string(),
     version: v.string(),
     author: v.string(),
     date: v.string(),
+    fromIso: v.string(),
+    toIso: v.string(),
+    notes: v.optional(v.string()),
+    breaking: v.optional(v.array(v.string())),
+    support: v.optional(v.string()),
+    tasks: v.array(
+      v.object({
+        code: v.string(),
+        title: v.string(),
+        taskType: v.string(),
+        stage: v.string(),
+        description: v.optional(v.union(v.string(), v.null())),
+        assigneeName: v.optional(v.union(v.string(), v.null())),
+        viaMainCommit: v.optional(v.boolean()),
+      }),
+    ),
+    commits: v.array(
+      v.object({
+        sha: v.string(),
+        subject: v.string(),
+        message: v.optional(v.string()),
+        authorName: v.string(),
+        authoredAt: v.string(),
+        repoFullName: v.string(),
+        matched: v.optional(v.string()),
+      }),
+    ),
   },
-  handler: async (_ctx, args): Promise<Result<{ doc: Record<string, unknown> }>> => {
+  handler: async (
+    _ctx,
+    args,
+  ): Promise<Result<{ doc: Record<string, unknown>; digests: number }>> => {
     const apiKey = openaiKey();
     if (!apiKey) {
       return {
@@ -459,123 +580,156 @@ export const generateDoc = action({
       };
     }
 
-    const brief = args.brief.trim();
-    if (!brief) {
-      return { ok: false, error: "Brief is empty." };
+    if (args.tasks.length === 0 && args.commits.length === 0) {
+      return { ok: false, error: "Select at least one task or main commit." };
     }
 
-    const system = `You are the Nizek Docs generator for Nizek Startups.
-Return ONLY one JSON object for kind "release-notes" that the Nizek Docs renderer can preview/print.
-
-Root schema:
-{
-  "kind": "release-notes",
-  "meta": {
-    "title": string,
-    "subtitle"?: string,
-    "project": string,
-    "version": string,
-    "date": string,
-    "author": string,
-    "status"?: "draft"|"review"|"approved"|"proposed",
-    "classification"?: string,
-    "tags"?: string[]
-  },
-  "cover": {
-    "enabled": true,
-    "eyebrow"?: string,
-    "headline"?: string,
-    "description"?: string,
-    "recipient"?: string
-  },
-  "kicker"?: string,
-  "sections": [
-    { "type": "paragraph", "title"?: string, "body": string }
-    | { "type": "list", "title": string, "items": string[], "ordered"?: boolean, "breakBefore"?: boolean }
-    | { "type": "callout", "title"?: string, "body": string }
-  ]
-}
-
-Rules:
-- Cover enabled. Concrete voice, no fluff, no emojis.
-- Structure: Highlights paragraph → New / Improvements / Fixes lists as available → optional "Also landed on main" for unmatched commits → Breaking list only if needed → Support callout.
-- Use the provided project/version/author/date exactly in meta (version bare, no leading v).
-- Prefer task wording from the brief; use main commits as evidence.
-- Dates: "D MMM YYYY".`;
+    const tasks: TaskInput[] = args.tasks;
+    const commits: CommitInput[] = args.commits.slice(0, 80);
 
     try {
-      const res = await fetch("https://api.openai.com/v1/chat/completions", {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${apiKey}`,
-          "Content-Type": "application/json",
+      const digests: CommitDigest[] = [];
+      const digestSystem = `You review git commits that landed on main for a release.
+Return ONLY JSON: {"digests":[...]} with one object per input commit, same order.
+Each digest:
+{
+  "sha": "<full sha from input>",
+  "summary": "1–2 concrete sentences of what changed",
+  "kind": "feature"|"fix"|"improvement"|"api"|"flow"|"infra"|"docs"|"chore"|"breaking"|"other",
+  "apiChanges": ["HTTP/RPC/route/contract changes inferred from the message — empty if none"],
+  "flowChanges": ["user/partner/system flow changes — empty if none"],
+  "breaking": ["breaking or migration notes — empty if none"],
+  "productNotes": ["product-facing bullets — empty if none"]
+}
+Read the full commit message body, not only the subject. Be specific. No fluff, no emojis.
+If the message mentions endpoints, payloads, webhooks, auth, migrations, or UI flows, capture them.`;
+
+      for (const batch of chunk(commits, 6)) {
+        const parsed = await chatJson({
+          apiKey,
+          system: digestSystem,
+          temperature: 0.2,
+          user: {
+            project: args.projectName,
+            commits: batch.map((c) => ({
+              sha: c.sha,
+              subject: c.subject,
+              body: (c.message ?? "").slice(0, 1200),
+              author: c.authorName,
+              at: c.authoredAt,
+              repo: c.repoFullName,
+              matchedTask: c.matched || null,
+            })),
+          },
+        });
+        const rows = Array.isArray(parsed.digests) ? parsed.digests : [];
+        for (let i = 0; i < batch.length; i++) {
+          digests.push(normalizeDigest(rows[i], batch[i]!.sha));
+        }
+      }
+
+      const composeSystem = `You are the Nizek Docs generator for Nizek Startups.
+Produce ONE thorough release-notes JSON document for engineering + partner audiences.
+Return ONLY a JSON object (no markdown).
+
+Root:
+{
+  "kind": "release-notes",
+  "meta": { "title", "subtitle?", "project", "version", "date", "author", "status?", "classification?", "tags?" },
+  "cover": { "enabled": true, "eyebrow?", "headline?", "description?", "recipient?" },
+  "kicker"?: string,
+  "sections": DocSection[]
+}
+
+Allowed section types (mix freely):
+- paragraph { type, title?, body }
+- list { type, title, items[], ordered?, breakBefore? }
+- two-col-lists { type, left:{title,items[]}, right:{title,items[]}, breakBefore? }
+- impact { type, title?, items:[{area, level:"low"|"medium"|"high", notes}], breakBefore? }
+- callout { type, title?, body }
+- sequence { type, title?, steps:[{actor, action, detail?}], breakBefore? }
+- endpoint-table { type, title?, rows:[{method, path, purpose, owner?}], breakBefore? }
+- qa { type, title?, items:[{question, answer}], breakBefore? }
+
+Required thoroughness:
+1. Highlights paragraph (rich, specific).
+2. New / Improvements / Fixes lists from tasks + digests (omit empty).
+3. If digests mention API work: an "API surface" section — prefer endpoint-table and/or detailed list; invent plausible paths only when strongly implied by commit text, otherwise describe the change without fake routes.
+4. If digests mention flows: a sequence or paragraph+list describing the changed flow.
+5. Commit-level appendix: a long ordered list or several lists grouped by theme — cover every digest, citing short sha.
+6. Impact section when useful (partners, dashboard, ops, data).
+7. Breaking / action required when digests or owner notes say so.
+8. Upgrade / migration notes callout when relevant.
+9. Support callout last.
+
+Rules:
+- Use provided project/version/author/date exactly (version bare, no leading v).
+- Prefer task titles for product language; digests are ground truth for what landed on main.
+- Concrete voice, no fluff, no emojis. Dates: D MMM YYYY.
+- Aim for a long, complete doc (typically 10–22 sections). Use breakBefore before heavy appendix / API / flow blocks.
+- Do not drop commits: every digest must appear somewhere (theme lists and/or appendix).`;
+
+      const docParsed = await chatJson({
+        apiKey,
+        system: composeSystem,
+        temperature: 0.35,
+        user: {
+          project: args.projectName,
+          version: stripV(args.version),
+          author: args.author,
+          date: args.date,
+          window: { from: args.fromIso, to: args.toIso },
+          ownerNotes: args.notes || null,
+          ownerBreaking: args.breaking ?? [],
+          supportHint: args.support || null,
+          tasks: tasks.map((t) => ({
+            code: t.code,
+            type: t.taskType,
+            stage: t.stage,
+            title: t.title,
+            description: (t.description ?? "").slice(0, 600) || null,
+            assignee: t.assigneeName ?? null,
+            viaMainCommit: Boolean(t.viaMainCommit),
+          })),
+          commitDigests: digests,
+          rawCommitCount: commits.length,
         },
-        body: JSON.stringify({
-          model: process.env.OPENAI_MODEL?.trim() || "gpt-4o-mini",
-          temperature: 0.35,
-          response_format: { type: "json_object" },
-          messages: [
-            { role: "system", content: system },
-            {
-              role: "user",
-              content: JSON.stringify({
-                kind: "release-notes",
-                coverEnabled: true,
-                project: args.projectName,
-                version: stripV(args.version),
-                author: args.author,
-                date: args.date,
-                brief,
-              }),
-            },
-          ],
-        }),
       });
 
-      if (!res.ok) {
-        const body = await res.text();
-        return {
-          ok: false,
-          error: `OpenAI ${res.status}: ${body.slice(0, 280)}`,
-        };
+      if (docParsed.kind !== "release-notes") {
+        docParsed.kind = "release-notes";
       }
-
-      const json = (await res.json()) as {
-        choices?: Array<{ message?: { content?: string } }>;
-      };
-      const content = json.choices?.[0]?.message?.content ?? "{}";
-      let doc: Record<string, unknown>;
-      try {
-        doc = JSON.parse(content) as Record<string, unknown>;
-      } catch {
-        return { ok: false, error: "AI returned invalid JSON." };
-      }
-
-      if (doc.kind !== "release-notes") {
-        doc.kind = "release-notes";
-      }
-      if (!Array.isArray(doc.sections) || doc.sections.length === 0) {
+      if (!Array.isArray(docParsed.sections) || docParsed.sections.length === 0) {
         return { ok: false, error: "AI returned no sections." };
       }
 
       const meta =
-        typeof doc.meta === "object" && doc.meta !== null
-          ? (doc.meta as Record<string, unknown>)
+        typeof docParsed.meta === "object" && docParsed.meta !== null
+          ? (docParsed.meta as Record<string, unknown>)
           : {};
       meta.project = args.projectName;
       meta.version = stripV(args.version);
       meta.author = args.author;
       meta.date = args.date;
-      doc.meta = meta;
+      if (!meta.classification) meta.classification = "Internal · Release";
+      docParsed.meta = meta;
 
       const cover =
-        typeof doc.cover === "object" && doc.cover !== null
-          ? (doc.cover as Record<string, unknown>)
+        typeof docParsed.cover === "object" && docParsed.cover !== null
+          ? (docParsed.cover as Record<string, unknown>)
           : {};
       cover.enabled = true;
-      doc.cover = cover;
+      if (!cover.eyebrow) cover.eyebrow = "Release Notes";
+      if (!cover.headline) {
+        cover.headline = `${args.projectName} ${stripV(args.version)}`;
+      }
+      docParsed.cover = cover;
 
-      return { ok: true, doc };
+      if (!docParsed.kicker) {
+        docParsed.kicker = `Release ${stripV(args.version)}`;
+      }
+
+      return { ok: true, doc: docParsed, digests: digests.length };
     } catch (e) {
       return {
         ok: false,

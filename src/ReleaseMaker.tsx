@@ -105,6 +105,182 @@ function downloadJson(doc: ReleaseDoc, slug: string) {
   URL.revokeObjectURL(url);
 }
 
+function asStringList(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  return value.filter((x): x is string => typeof x === "string");
+}
+
+function ReleaseSectionPreview({
+  section,
+}: {
+  section: Record<string, unknown>;
+}) {
+  const type = String(section.type ?? "");
+  const title = typeof section.title === "string" ? section.title : null;
+
+  if (type === "paragraph") {
+    return (
+      <section>
+        {title ? <h4>{title}</h4> : null}
+        <p>{String(section.body ?? "")}</p>
+      </section>
+    );
+  }
+
+  if (type === "list") {
+    const items = asStringList(section.items);
+    const ListTag = section.ordered ? "ol" : "ul";
+    return (
+      <section>
+        {title ? <h4>{title}</h4> : null}
+        <ListTag>
+          {items.map((item) => (
+            <li key={item}>{item}</li>
+          ))}
+        </ListTag>
+      </section>
+    );
+  }
+
+  if (type === "callout") {
+    return (
+      <section className="release-callout">
+        {title ? <h4>{title}</h4> : null}
+        <p>{String(section.body ?? "")}</p>
+      </section>
+    );
+  }
+
+  if (type === "two-col-lists") {
+    const left = section.left as
+      | { title?: string; items?: unknown }
+      | undefined;
+    const right = section.right as
+      | { title?: string; items?: unknown }
+      | undefined;
+    return (
+      <section className="release-two-col">
+        <div>
+          <h4>{left?.title ?? "Left"}</h4>
+          <ul>
+            {asStringList(left?.items).map((item) => (
+              <li key={item}>{item}</li>
+            ))}
+          </ul>
+        </div>
+        <div>
+          <h4>{right?.title ?? "Right"}</h4>
+          <ul>
+            {asStringList(right?.items).map((item) => (
+              <li key={item}>{item}</li>
+            ))}
+          </ul>
+        </div>
+      </section>
+    );
+  }
+
+  if (type === "impact") {
+    const items = Array.isArray(section.items) ? section.items : [];
+    return (
+      <section>
+        {title ? <h4>{title}</h4> : null}
+        <ul className="release-impact">
+          {items.map((raw, idx) => {
+            const row =
+              typeof raw === "object" && raw !== null
+                ? (raw as Record<string, unknown>)
+                : {};
+            return (
+              <li key={idx}>
+                <strong>{String(row.area ?? "Area")}</strong>
+                <span data-level={String(row.level ?? "low")}>
+                  {String(row.level ?? "low")}
+                </span>
+                <em>{String(row.notes ?? "")}</em>
+              </li>
+            );
+          })}
+        </ul>
+      </section>
+    );
+  }
+
+  if (type === "sequence") {
+    const steps = Array.isArray(section.steps) ? section.steps : [];
+    return (
+      <section>
+        {title ? <h4>{title}</h4> : null}
+        <ol className="release-sequence">
+          {steps.map((raw, idx) => {
+            const step =
+              typeof raw === "object" && raw !== null
+                ? (raw as Record<string, unknown>)
+                : {};
+            return (
+              <li key={idx}>
+                <strong>{String(step.actor ?? "Actor")}</strong>
+                <span>{String(step.action ?? "")}</span>
+                {step.detail ? <em>{String(step.detail)}</em> : null}
+              </li>
+            );
+          })}
+        </ol>
+      </section>
+    );
+  }
+
+  if (type === "endpoint-table") {
+    const rows = Array.isArray(section.rows) ? section.rows : [];
+    return (
+      <section>
+        {title ? <h4>{title}</h4> : null}
+        <div className="release-endpoint-table">
+          {rows.map((raw, idx) => {
+            const row =
+              typeof raw === "object" && raw !== null
+                ? (raw as Record<string, unknown>)
+                : {};
+            return (
+              <p key={idx}>
+                <code>
+                  {String(row.method ?? "GET")} {String(row.path ?? "")}
+                </code>
+                <span>{String(row.purpose ?? "")}</span>
+              </p>
+            );
+          })}
+        </div>
+      </section>
+    );
+  }
+
+  if (type === "qa") {
+    const items = Array.isArray(section.items) ? section.items : [];
+    return (
+      <section>
+        {title ? <h4>{title}</h4> : null}
+        <div className="release-qa">
+          {items.map((raw, idx) => {
+            const qa =
+              typeof raw === "object" && raw !== null
+                ? (raw as Record<string, unknown>)
+                : {};
+            return (
+              <div key={idx}>
+                <strong>{String(qa.question ?? "")}</strong>
+                <p>{String(qa.answer ?? "")}</p>
+              </div>
+            );
+          })}
+        </div>
+      </section>
+    );
+  }
+
+  return null;
+}
+
 export default function ReleaseMaker() {
   const projects = useQuery(api.projects.list);
 
@@ -251,16 +427,42 @@ export default function ReleaseMaker() {
       }
 
       const result = await generateDoc({
-        brief: nextBrief,
         projectName: meta.projectName,
         version: meta.version,
         author: meta.author,
         date: formatDocDate(meta.toIso),
+        fromIso: meta.fromIso,
+        toIso: meta.toIso,
+        notes: meta.notes,
+        breaking: meta.breaking,
+        support: meta.support,
+        tasks: selectedTasks.map((t) => ({
+          code: taskCode(t.taskType, t.taskNumber),
+          title: t.title,
+          taskType: t.taskType,
+          stage: t.stage,
+          description: t.description ?? null,
+          assigneeName: t.assigneeName ?? null,
+          viaMainCommit: Boolean(t.viaMainCommit),
+        })),
+        commits: selectedCommits.map((c) => ({
+          sha: c.sha,
+          subject: c.subject,
+          message: c.message,
+          authorName: c.authorName,
+          authoredAt: c.authoredAt,
+          repoFullName: c.repoFullName,
+          matched: c.matchedTasks[0]
+            ? `${c.matchedTasks[0].status} ${c.matchedTasks[0].taskCode ?? ""} ${c.matchedTasks[0].taskTitle ?? ""}`.trim()
+            : undefined,
+        })),
       });
 
       if (result.ok) {
         setDoc(result.doc as ReleaseDoc);
-        setStatus("Generated with AI (Nizek Docs schema).");
+        setStatus(
+          `Generated thorough release doc · digested ${result.digests} main commit${result.digests === 1 ? "" : "s"}.`,
+        );
         return;
       }
 
@@ -855,8 +1057,8 @@ export default function ReleaseMaker() {
               <div>
                 <h2>Generate release notes</h2>
                 <p>
-                  AI runs via Convex OpenAI and outputs Nizek Docs{" "}
-                  <code>release-notes</code> JSON
+                  AI digests each main commit, then composes a long Nizek Docs{" "}
+                  <code>release-notes</code> (API / flow / appendix)
                   {DOCS_URL ? ` · open in ${DOCS_URL}` : ""}.
                 </p>
               </div>
@@ -963,43 +1165,9 @@ export default function ReleaseMaker() {
                   </p>
                 </header>
                 <div className="release-doc-sections">
-                  {doc.sections.map((section, i) => {
-                    const type = String(section.type ?? "");
-                    const title =
-                      typeof section.title === "string" ? section.title : null;
-                    if (type === "paragraph") {
-                      return (
-                        <section key={i}>
-                          {title ? <h4>{title}</h4> : null}
-                          <p>{String(section.body ?? "")}</p>
-                        </section>
-                      );
-                    }
-                    if (type === "list") {
-                      const items = Array.isArray(section.items)
-                        ? (section.items as string[])
-                        : [];
-                      return (
-                        <section key={i}>
-                          {title ? <h4>{title}</h4> : null}
-                          <ul>
-                            {items.map((item) => (
-                              <li key={item}>{item}</li>
-                            ))}
-                          </ul>
-                        </section>
-                      );
-                    }
-                    if (type === "callout") {
-                      return (
-                        <section key={i} className="release-callout">
-                          {title ? <h4>{title}</h4> : null}
-                          <p>{String(section.body ?? "")}</p>
-                        </section>
-                      );
-                    }
-                    return null;
-                  })}
+                  {doc.sections.map((section, i) => (
+                    <ReleaseSectionPreview key={i} section={section} />
+                  ))}
                 </div>
               </article>
             ) : (

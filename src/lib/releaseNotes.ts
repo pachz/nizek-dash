@@ -145,6 +145,17 @@ function unmatchedCommitItems(commits: ReleaseCommit[]) {
     .map(commitLine);
 }
 
+const APIISH_RE =
+  /\b(api|endpoint|graphql|webhook|rpc|rest|route|\/v\d|openapi|swagger|payload|request|response|auth|oauth|jwt|migration|schema|contract)\b/i;
+const FLOWISH_RE =
+  /\b(flow|journey|onboarding|checkout|webhook|callback|pipeline|sequence|handshake|redirect|funnel)\b/i;
+
+function commitBody(c: ReleaseCommit, max = 900) {
+  const body = c.message.split("\n").slice(1).join("\n").trim();
+  if (!body) return "";
+  return body.length > max ? `${body.slice(0, max)}…` : body;
+}
+
 export function buildReleaseBrief(
   tasks: ReleaseTask[],
   commits: ReleaseCommit[],
@@ -153,15 +164,15 @@ export function buildReleaseBrief(
   const range = formatRangeLabel(meta.fromIso, meta.toIso);
   const groups = groupTasks(tasks);
   const lines: string[] = [
-    `Write release notes for ${meta.projectName} version ${meta.version}.`,
+    `Write a thorough release document for ${meta.projectName} version ${meta.version}.`,
     `Release window: ${range}.`,
     `Author: ${meta.author}.`,
     `Audience: product + engineering partners.`,
     "",
-    "Ground truth is finished Nizek tasks plus commits that landed on main in this window.",
-    "Prefer task wording for product language; use main commits as evidence of what actually shipped.",
-    "Use kind release-notes. Cover page on. Concrete voice, no fluff, no emojis.",
-    "Structure: Highlights paragraph → New / Improvements / Fixes lists → Commits on main (unmatched) if useful → Breaking (if any) → Support callout.",
+    "Ground truth: finished Nizek tasks + every selected commit on main.",
+    "Read each commit message body. Call out API/contract changes and user/partner flow changes.",
+    "Produce a long Nizek Docs release-notes JSON: highlights, New/Improvements/Fixes,",
+    "API surface, flow changes, impact, full commit appendix, breaking, support.",
     "",
   ];
 
@@ -185,7 +196,17 @@ export function buildReleaseBrief(
     }
   }
 
-  lines.push("", `Commits on main (${commits.length}):`);
+  for (const t of tasks) {
+    const desc = t.description?.trim();
+    if (!desc) continue;
+    lines.push(
+      "",
+      `Task detail ${taskCode(t.taskType, t.taskNumber)} — ${t.title}:`,
+      desc.slice(0, 500) + (desc.length > 500 ? "…" : ""),
+    );
+  }
+
+  lines.push("", `Commits on main (${commits.length}) — read each carefully:`);
   if (commits.length === 0) {
     lines.push("- (none selected)");
   } else {
@@ -199,9 +220,20 @@ export function buildReleaseBrief(
                   `${m.status} ${m.taskCode ?? m.taskNizekId}${m.taskTitle ? ` “${m.taskTitle}”` : ""}`,
               )
               .join("; ");
+      const flags = [
+        APIISH_RE.test(c.message) ? "api?" : null,
+        FLOWISH_RE.test(c.message) ? "flow?" : null,
+      ]
+        .filter(Boolean)
+        .join(",");
       lines.push(
-        `- ${shortSha(c.sha)} ${c.subject} · ${c.repoFullName} · ${c.authorName} · ${matches}`,
+        "",
+        `### ${shortSha(c.sha)} · ${c.repoFullName} · ${c.authorName}${flags ? ` · ${flags}` : ""}`,
+        c.subject,
+        `matched: ${matches}`,
       );
+      const body = commitBody(c);
+      if (body) lines.push(body);
     }
   }
 
@@ -212,7 +244,7 @@ export function buildReleaseBrief(
       if (t) lines.push(`- ${t}`);
     }
   } else {
-    lines.push("", "No known breaking changes unless the items imply otherwise.");
+    lines.push("", "No owner-supplied breaking changes — infer only if commits imply them.");
   }
 
   if (meta.support?.trim()) {
@@ -263,11 +295,54 @@ export function buildReleaseDoc(
     });
   }
 
+  const apiish = commits.filter((c) => APIISH_RE.test(c.message));
+  if (apiish.length) {
+    sections.push({
+      breakBefore: true,
+      type: "list",
+      title: "API / contract signals from main",
+      items: apiish.map((c) => {
+        const body = commitBody(c, 180);
+        return body
+          ? `${shortSha(c.sha)} — ${c.subject}: ${body.replace(/\s+/g, " ")}`
+          : commitLine(c);
+      }),
+    });
+  }
+
+  const flowish = commits.filter((c) => FLOWISH_RE.test(c.message));
+  if (flowish.length) {
+    sections.push({
+      type: "list",
+      title: "Flow signals from main",
+      items: flowish.map(commitLine),
+    });
+  }
+
   if (unmatched.length) {
     sections.push({
       type: "list",
-      title: "Also landed on main",
+      title: "Also landed on main (unmatched)",
       items: unmatched,
+    });
+  }
+
+  if (commits.length) {
+    sections.push({
+      breakBefore: true,
+      type: "list",
+      title: "Commit appendix (main)",
+      ordered: true,
+      items: commits.map((c) => {
+        const body = commitBody(c, 220).replace(/\s+/g, " ");
+        const match = c.matchedTasks[0];
+        const matchBit = match
+          ? ` · ${match.taskCode ?? match.taskNizekId}`
+          : "";
+        return body
+          ? `${shortSha(c.sha)} — ${c.subject}${matchBit}. ${body}`
+          : `${commitLine(c)}${matchBit}`;
+      }),
     });
   }
 
