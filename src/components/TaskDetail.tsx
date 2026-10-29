@@ -60,6 +60,7 @@ export function TaskDetail({
   onClose: () => void;
 }) {
   const task = useQuery(api.tasks.get, { nizekId });
+  const linkedCommits = useQuery(api.commits.listForTask, { taskNizekId: nizekId });
   const fetchDetail = useAction(api.nizekActions.fetchTaskDetail);
   const [extras, setExtras] = useState<Extras>(emptyExtras);
   const [enriching, setEnriching] = useState(true);
@@ -367,6 +368,34 @@ export function TaskDetail({
                       {a.at ? (
                         <span className="hint">{formatWhen(a.at)}</span>
                       ) : null}
+                    </li>
+                  ))}
+                </ul>
+              </section>
+            ) : null}
+
+            {linkedCommits && linkedCommits.length > 0 ? (
+              <section className="detail-block">
+                <h3>Linked commits</h3>
+                <ul className="task-commit-list">
+                  {linkedCommits.map((c) => (
+                    <li key={c.matchId}>
+                      <a href={c.htmlUrl} target="_blank" rel="noreferrer">
+                        <code>{c.sha.slice(0, 7)}</code>
+                      </a>
+                      <span className="pill soft">{c.repoFullName}</span>
+                      <span className="pill soft">
+                        {c.status} · {c.method} ·{" "}
+                        {Math.round(c.confidence * 100)}%
+                      </span>
+                      <p>{c.message.split("\n")[0]}</p>
+                      <p className="hint">
+                        {c.authorName}
+                        {c.authoredAt
+                          ? ` · ${formatWhen(c.authoredAt) ?? ""}`
+                          : ""}
+                        {c.reason ? ` · ${c.reason}` : ""}
+                      </p>
                     </li>
                   ))}
                 </ul>

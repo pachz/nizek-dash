@@ -8,8 +8,13 @@
  * @module
  */
 
+import type * as commits from "../commits.js";
 import type * as crons from "../crons.js";
+import type * as gitActions from "../gitActions.js";
+import type * as gitRepos from "../gitRepos.js";
 import type * as lib_parse from "../lib/parse.js";
+import type * as lib_taskCode from "../lib/taskCode.js";
+import type * as matchActions from "../matchActions.js";
 import type * as nizekActions from "../nizekActions.js";
 import type * as projects from "../projects.js";
 import type * as seed from "../seed.js";
@@ -24,8 +29,13 @@ import type {
 } from "convex/server";
 
 declare const fullApi: ApiFromModules<{
+  commits: typeof commits;
   crons: typeof crons;
+  gitActions: typeof gitActions;
+  gitRepos: typeof gitRepos;
   "lib/parse": typeof lib_parse;
+  "lib/taskCode": typeof lib_taskCode;
+  matchActions: typeof matchActions;
   nizekActions: typeof nizekActions;
   projects: typeof projects;
   seed: typeof seed;

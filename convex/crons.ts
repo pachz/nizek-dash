@@ -17,4 +17,18 @@ crons.interval(
   internal.nizekActions.syncAllInternal,
 );
 
+// Pull GitHub commits for enabled repos (60d window, incremental)
+crons.interval(
+  "sync git commits",
+  { minutes: 30 },
+  internal.gitActions.syncCommitsInternal,
+);
+
+// Heuristic + AI match new unmatched commits to tasks
+crons.interval(
+  "match commits to tasks",
+  { minutes: 60 },
+  internal.matchActions.runMatchingInternal,
+);
+
 export default crons;

@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useAction, useMutation, useQuery } from "convex/react";
 import { api } from "../convex/_generated/api";
 import { isAdminUnlocked, lockAdmin, unlockAdmin } from "./lib/admin";
@@ -74,16 +74,37 @@ function LoginGate({ onUnlock }: { onUnlock: () => void }) {
 function AdminPanel({ onLock }: { onLock: () => void }) {
   const settings = useQuery(api.settings.get);
   const projects = useQuery(api.projects.list);
+  const gitRepos = useQuery(api.gitRepos.list);
+  const githubStatus = useQuery(api.gitRepos.githubStatus);
 
   const [cookieDraft, setCookieDraft] = useState("");
+  const [githubDraft, setGithubDraft] = useState("");
+  const [repoDraft, setRepoDraft] = useState("");
   const [status, setStatus] = useState<string | null>(null);
   const [statusTone, setStatusTone] = useState<"ok" | "err">("ok");
   const [pending, setPending] = useState(false);
+  const [openaiConfigured, setOpenaiConfigured] = useState<boolean | null>(
+    null,
+  );
 
   const saveCookie = useMutation(api.settings.saveCookie);
+  const saveGithubToken = useMutation(api.gitRepos.saveGithubToken);
+  const upsertRepo = useMutation(api.gitRepos.upsert);
+  const setRepoEnabled = useMutation(api.gitRepos.setEnabled);
+  const setRepoProjects = useMutation(api.gitRepos.setProjectIds);
+  const removeRepo = useMutation(api.gitRepos.remove);
   const importExport = useMutation(api.seed.importExport);
   const rotateToken = useAction(api.nizekActions.rotateToken);
   const syncAll = useAction(api.nizekActions.syncAll);
+  const syncCommits = useAction(api.gitActions.syncCommits);
+  const runMatching = useAction(api.matchActions.runMatching);
+  const openaiStatus = useAction(api.matchActions.openaiStatus);
+
+  useEffect(() => {
+    void openaiStatus({})
+      .then((r) => setOpenaiConfigured(r.configured))
+      .catch(() => setOpenaiConfigured(false));
+  }, [openaiStatus]);
 
   function showOk(message: string) {
     setStatusTone("ok");
@@ -142,6 +163,9 @@ function AdminPanel({ onLock }: { onLock: () => void }) {
         <div className="top-actions">
           <a className="ghost" href="/">
             Board
+          </a>
+          <a className="ghost" href="/commits">
+            Commits
           </a>
           <button
             type="button"
@@ -267,6 +291,215 @@ function AdminPanel({ onLock }: { onLock: () => void }) {
         </div>
       </section>
 
+      <section className="session-panel glass">
+        <div>
+          <h2>GitHub commits</h2>
+          <p>
+            One shared PAT (classic <code>repo</code> or fine-grained Contents
+            read). Repos are mapped to Nizek projects for task matching. Sync
+            pulls ~60 days across all branches; matching runs heuristic then AI.
+          </p>
+          <div className="status-row" style={{ marginBottom: 12 }}>
+            <span className="pill">
+              {githubStatus?.hasToken
+                ? `Token ${githubStatus.tokenHint}`
+                : "No GitHub token"}
+            </span>
+            <span className="pill soft">
+              {gitRepos?.length ?? 0} repos
+            </span>
+            <span
+              className={`pill ${openaiConfigured ? "soft" : "danger"}`}
+            >
+              {openaiConfigured === null
+                ? "OpenAI…"
+                : openaiConfigured
+                  ? "OpenAI configured"
+                  : "OpenAI missing on Convex"}
+            </span>
+            {githubStatus?.lastCommitSyncAt ? (
+              <span className="pill soft">
+                Sync{" "}
+                {new Date(githubStatus.lastCommitSyncAt).toLocaleString()}
+              </span>
+            ) : null}
+            {githubStatus?.lastCommitError ? (
+              <span className="pill danger">{githubStatus.lastCommitError}</span>
+            ) : null}
+            {githubStatus?.lastMatchError ? (
+              <span className="pill danger">{githubStatus.lastMatchError}</span>
+            ) : null}
+          </div>
+          <textarea
+            value={githubDraft}
+            onChange={(e) => setGithubDraft(e.target.value)}
+            placeholder="ghp_… or github_pat_…"
+            rows={2}
+          />
+          <div className="row">
+            <button
+              type="button"
+              className="primary solid"
+              disabled={pending}
+              onClick={() =>
+                void runJob("Saving GitHub token…", async () => {
+                  await saveGithubToken({ token: githubDraft });
+                  setGithubDraft("");
+                  showOk("GitHub token saved");
+                })
+              }
+            >
+              Save token
+            </button>
+            <button
+              type="button"
+              className="primary"
+              disabled={pending}
+              onClick={() =>
+                void runJob("Syncing commits…", async () => {
+                  const r = await syncCommits({});
+                  if (!r.ok) {
+                    showErr(r.error);
+                    return;
+                  }
+                  showOk(
+                    `Commits · ${r.repos} repos · +${r.inserted} new · ~${r.updated} updated`,
+                  );
+                })
+              }
+            >
+              Sync commits now
+            </button>
+            <button
+              type="button"
+              className="ghost"
+              disabled={pending}
+              onClick={() =>
+                void runJob("Matching commits…", async () => {
+                  const r = await runMatching({});
+                  if (!r.ok) {
+                    showErr(r.error);
+                    return;
+                  }
+                  showOk(
+                    `Matched · heuristic ${r.heuristic} · AI ${r.ai} · scanned ${r.scanned}`,
+                  );
+                })
+              }
+            >
+              Run matching now
+            </button>
+          </div>
+
+          <div className="repo-add-row">
+            <input
+              value={repoDraft}
+              onChange={(e) => setRepoDraft(e.target.value)}
+              placeholder="owner/repo"
+            />
+            <button
+              type="button"
+              className="primary solid"
+              disabled={pending || !repoDraft.trim()}
+              onClick={() =>
+                void runJob("Adding repo…", async () => {
+                  await upsertRepo({ fullName: repoDraft });
+                  setRepoDraft("");
+                  showOk("Repo added");
+                })
+              }
+            >
+              Add repo
+            </button>
+          </div>
+
+          <ul className="repo-list">
+            {(gitRepos ?? []).map((repo) => (
+              <li key={repo._id} className="repo-card">
+                <div className="repo-card-head">
+                  <div>
+                    <code>{repo.fullName}</code>
+                    {repo.lastError ? (
+                      <p className="admin-error">{repo.lastError}</p>
+                    ) : null}
+                  </div>
+                  <div className="row">
+                    <button
+                      type="button"
+                      className="ghost"
+                      data-on={repo.enabled}
+                      disabled={pending}
+                      onClick={() =>
+                        void runJob(
+                          repo.enabled ? "Disabling…" : "Enabling…",
+                          async () => {
+                            await setRepoEnabled({
+                              repoId: repo._id,
+                              enabled: !repo.enabled,
+                            });
+                            showOk(
+                              `${repo.fullName} ${repo.enabled ? "off" : "on"}`,
+                            );
+                          },
+                        )
+                      }
+                    >
+                      {repo.enabled ? "Enabled" : "Disabled"}
+                    </button>
+                    <button
+                      type="button"
+                      className="ghost"
+                      disabled={pending}
+                      onClick={() =>
+                        void runJob("Removing repo…", async () => {
+                          await removeRepo({ repoId: repo._id });
+                          showOk(`Removed ${repo.fullName}`);
+                        })
+                      }
+                    >
+                      Remove
+                    </button>
+                  </div>
+                </div>
+                <p className="repo-map-label">Map to Nizek projects</p>
+                <div className="repo-project-grid">
+                  {(projects ?? []).map((p) => {
+                    const on = repo.projectIds.includes(p.nizekId);
+                    return (
+                      <button
+                        key={p.nizekId}
+                        type="button"
+                        className="ghost repo-project-chip"
+                        data-on={on}
+                        disabled={pending}
+                        onClick={() =>
+                          void runJob("Updating map…", async () => {
+                            const next = on
+                              ? repo.projectIds.filter((id) => id !== p.nizekId)
+                              : [...repo.projectIds, p.nizekId];
+                            await setRepoProjects({
+                              repoId: repo._id,
+                              projectIds: next,
+                            });
+                            showOk("Project map updated");
+                          })
+                        }
+                      >
+                        <span
+                          className="dot"
+                          style={{ background: p.color }}
+                          aria-hidden
+                        />
+                        {p.name}
+                      </button>
+                    );
+                  })}
+                </div>
+              </li>
+            ))}
+          </ul>
+        </div>
+      </section>
     </div>
   );
 }

@@ -4,6 +4,7 @@ import { ConvexProvider, ConvexReactClient } from "convex/react";
 import "./index.css";
 import App from "./App.tsx";
 import Admin from "./Admin.tsx";
+import Commits from "./Commits.tsx";
 
 const convexUrl = import.meta.env.VITE_CONVEX_URL;
 if (!convexUrl) {
@@ -27,6 +28,9 @@ function Root() {
   const path = useSyncExternalStore(subscribePath, getPath, () => "/");
   if (path === "/admin" || path.startsWith("/admin/")) {
     return <Admin />;
+  }
+  if (path === "/commits" || path.startsWith("/commits/")) {
+    return <Commits />;
   }
   return <App />;
 }

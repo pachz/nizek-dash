@@ -139,6 +139,12 @@ export default function App() {
           >
             Active sprint
           </button>
+          <a className="ghost" href="/commits">
+            Commits
+          </a>
+          <a className="ghost" href="/admin">
+            Admin
+          </a>
         </div>
       </header>
 
