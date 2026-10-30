@@ -28,6 +28,8 @@ export default defineSchema({
     enabled: v.boolean(),
     taskCount: v.number(),
     color: v.string(),
+    /** Soft-delete — set on sync when missing from Panel; never hard-deleted. */
+    deletedAt: v.optional(v.number()),
   }).index("by_nizekId", ["nizekId"]),
 
   tasks: defineTable({
@@ -51,6 +53,8 @@ export default defineSchema({
     startedAt: v.optional(v.union(v.string(), v.null())),
     /** JSON blob: questions, attachments, comments, proofOfWork, activity */
     detailExtras: v.optional(v.string()),
+    /** Soft-delete — set on sync when missing from Panel; never hard-deleted. */
+    deletedAt: v.optional(v.number()),
   })
     .index("by_nizekId", ["nizekId"])
     .index("by_project", ["projectId"])
@@ -67,6 +71,7 @@ export default defineSchema({
     lastError: v.optional(v.string()),
     /** ISO timestamp cursor — commits authored after this are fetched next */
     syncSince: v.optional(v.string()),
+    deletedAt: v.optional(v.number()),
   }).index("by_fullName", ["fullName"]),
 
   commits: defineTable({
@@ -78,6 +83,7 @@ export default defineSchema({
     authoredAt: v.string(),
     htmlUrl: v.string(),
     branches: v.array(v.string()),
+    deletedAt: v.optional(v.number()),
   })
     .index("by_repo_sha", ["repoId", "sha"])
     .index("by_repo_authoredAt", ["repoId", "authoredAt"])
@@ -97,6 +103,7 @@ export default defineSchema({
     ),
     model: v.optional(v.string()),
     updatedAt: v.number(),
+    deletedAt: v.optional(v.number()),
   })
     .index("by_commit", ["commitId"])
     .index("by_task", ["taskNizekId"])

@@ -2,6 +2,7 @@ import { v } from "convex/values";
 import { mutation } from "./_generated/server";
 import { colorForId } from "./lib/parse";
 
+/** Upsert seed data — never hard-deletes; marks missing rows as deleted. */
 export const importExport = mutation({
   args: {
     projects: v.array(
@@ -43,24 +44,40 @@ export const importExport = mutation({
     ),
   },
   handler: async (ctx, args) => {
-    const existingProjects = await ctx.db.query("projects").take(200);
-    for (const p of existingProjects) await ctx.db.delete(p._id);
-    const existingTasks = await ctx.db.query("tasks").take(5000);
-    for (const t of existingTasks) await ctx.db.delete(t._id);
+    const now = Date.now();
+    const seenProjects = new Set<string>();
+    const seenTasks = new Set<string>();
 
     for (const p of args.projects) {
-      await ctx.db.insert("projects", {
+      seenProjects.add(p.id);
+      const row = {
         nizekId: p.id,
         name: p.name.startsWith("cm") ? p.name : p.name,
         teamName: p.teamName ?? undefined,
         enabled: p.enabled ?? true,
         taskCount: p.taskCount ?? 0,
         color: colorForId(p.id),
-      });
+      };
+      const existing = await ctx.db
+        .query("projects")
+        .withIndex("by_nizekId", (q) => q.eq("nizekId", p.id))
+        .unique();
+      if (existing) {
+        await ctx.db.patch(existing._id, { ...row, deletedAt: undefined });
+      } else {
+        await ctx.db.insert("projects", row);
+      }
+    }
+
+    for (const p of await ctx.db.query("projects").take(200)) {
+      if (!seenProjects.has(p.nizekId) && p.deletedAt == null) {
+        await ctx.db.patch(p._id, { deletedAt: now });
+      }
     }
 
     for (const t of args.tasks) {
-      await ctx.db.insert("tasks", {
+      seenTasks.add(t.id);
+      const row = {
         nizekId: t.id,
         projectId: t.projectId,
         title: t.title,
@@ -79,7 +96,22 @@ export const importExport = mutation({
         sprintStatus: t.sprintStatus ?? null,
         stageEnteredAt: t.stageEnteredAt ?? null,
         startedAt: t.startedAt ?? null,
-      });
+      };
+      const existing = await ctx.db
+        .query("tasks")
+        .withIndex("by_nizekId", (q) => q.eq("nizekId", t.id))
+        .unique();
+      if (existing) {
+        await ctx.db.patch(existing._id, { ...row, deletedAt: undefined });
+      } else {
+        await ctx.db.insert("tasks", row);
+      }
+    }
+
+    for (const t of await ctx.db.query("tasks").take(5000)) {
+      if (!seenTasks.has(t.nizekId) && t.deletedAt == null) {
+        await ctx.db.patch(t._id, { deletedAt: now });
+      }
     }
 
     const settings = await ctx.db

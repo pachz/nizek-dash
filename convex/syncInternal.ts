@@ -33,6 +33,11 @@ export const patchSettings = internalMutation({
   },
 });
 
+/**
+ * Upsert Panel projects/tasks. Never hard-deletes — rows missing from the
+ * payload are soft-deleted (`deletedAt`). Returning rows clear `deletedAt`.
+ * Preserves local-only fields like `tasks.detailExtras`.
+ */
 export const replaceAll = internalMutation({
   args: {
     projects: v.array(
@@ -69,17 +74,56 @@ export const replaceAll = internalMutation({
     ),
   },
   handler: async (ctx, args) => {
-    const oldProjects = await ctx.db.query("projects").take(200);
-    for (const p of oldProjects) await ctx.db.delete(p._id);
-    const oldTasks = await ctx.db.query("tasks").take(5000);
-    for (const t of oldTasks) await ctx.db.delete(t._id);
+    const now = Date.now();
+    const seenProjects = new Set<string>();
+    const seenTasks = new Set<string>();
 
     for (const p of args.projects) {
-      await ctx.db.insert("projects", p);
+      seenProjects.add(p.nizekId);
+      const existing = await ctx.db
+        .query("projects")
+        .withIndex("by_nizekId", (q) => q.eq("nizekId", p.nizekId))
+        .unique();
+      if (existing) {
+        await ctx.db.patch(existing._id, {
+          ...p,
+          deletedAt: undefined,
+        });
+      } else {
+        await ctx.db.insert("projects", p);
+      }
     }
+
+    const oldProjects = await ctx.db.query("projects").take(200);
+    for (const p of oldProjects) {
+      if (!seenProjects.has(p.nizekId) && p.deletedAt == null) {
+        await ctx.db.patch(p._id, { deletedAt: now });
+      }
+    }
+
     for (const t of args.tasks) {
-      await ctx.db.insert("tasks", t);
+      seenTasks.add(t.nizekId);
+      const existing = await ctx.db
+        .query("tasks")
+        .withIndex("by_nizekId", (q) => q.eq("nizekId", t.nizekId))
+        .unique();
+      if (existing) {
+        await ctx.db.patch(existing._id, {
+          ...t,
+          deletedAt: undefined,
+        });
+      } else {
+        await ctx.db.insert("tasks", t);
+      }
     }
+
+    const oldTasks = await ctx.db.query("tasks").take(5000);
+    for (const t of oldTasks) {
+      if (!seenTasks.has(t.nizekId) && t.deletedAt == null) {
+        await ctx.db.patch(t._id, { deletedAt: now });
+      }
+    }
+
     const settings = await ctx.db
       .query("settings")
       .withIndex("by_key", (q) => q.eq("key", "main"))

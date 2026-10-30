@@ -1,5 +1,6 @@
 import { v } from "convex/values";
 import { internalQuery, mutation, query } from "./_generated/server";
+import { isLive } from "./lib/softDelete";
 
 function parseFullName(input: string): { owner: string; name: string; fullName: string } {
   const cleaned = input
@@ -19,7 +20,7 @@ function parseFullName(input: string): { owner: string; name: string; fullName: 
 export const list = query({
   args: {},
   handler: async (ctx) => {
-    return await ctx.db.query("gitRepos").take(200);
+    return (await ctx.db.query("gitRepos").take(200)).filter(isLive);
   },
 });
 
@@ -28,7 +29,7 @@ export const reposForProject = internalQuery({
   handler: async (ctx, args) => {
     const repos = await ctx.db.query("gitRepos").take(200);
     return repos
-      .filter((r) => r.projectIds.includes(args.projectId))
+      .filter((r) => isLive(r) && r.projectIds.includes(args.projectId))
       .map((r) => ({
         owner: r.owner,
         name: r.name,
@@ -112,6 +113,7 @@ export const upsert = mutation({
       await ctx.db.patch(existing._id, {
         projectIds: args.projectIds ?? existing.projectIds,
         enabled: args.enabled ?? existing.enabled,
+        deletedAt: undefined,
       });
       return existing._id;
     }
@@ -149,24 +151,34 @@ export const setEnabled = mutation({
   },
 });
 
+/** Soft-delete repo and cascade soft-delete its commits + matches. */
 export const remove = mutation({
   args: { repoId: v.id("gitRepos") },
   handler: async (ctx, args) => {
     const repo = await ctx.db.get(args.repoId);
     if (!repo) return;
+    const now = Date.now();
 
     const commits = await ctx.db
       .query("commits")
       .withIndex("by_repo_authoredAt", (q) => q.eq("repoId", args.repoId))
       .take(5000);
     for (const c of commits) {
+      if (c.deletedAt == null) {
+        await ctx.db.patch(c._id, { deletedAt: now });
+      }
       const matches = await ctx.db
         .query("commitMatches")
         .withIndex("by_commit", (q) => q.eq("commitId", c._id))
         .take(50);
-      for (const m of matches) await ctx.db.delete(m._id);
-      await ctx.db.delete(c._id);
+      for (const m of matches) {
+        if (m.deletedAt == null) {
+          await ctx.db.patch(m._id, { deletedAt: now });
+        }
+      }
     }
-    await ctx.db.delete(args.repoId);
+    if (repo.deletedAt == null) {
+      await ctx.db.patch(args.repoId, { deletedAt: now, enabled: false });
+    }
   },
 });

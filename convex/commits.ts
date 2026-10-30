@@ -6,6 +6,7 @@ import {
   query,
 } from "./_generated/server";
 import type { Id } from "./_generated/dataModel";
+import { isLive } from "./lib/softDelete";
 
 const BACKFILL_MS = 60 * 24 * 60 * 60 * 1000;
 
@@ -45,6 +46,7 @@ export const upsertBatch = internalMutation({
           authoredAt: c.authoredAt,
           htmlUrl: c.htmlUrl,
           branches,
+          deletedAt: undefined,
         });
         updated++;
       } else {
@@ -135,7 +137,7 @@ export const listEnabledRepos = internalQuery({
   args: {},
   handler: async (ctx) => {
     const repos = await ctx.db.query("gitRepos").take(200);
-    return repos.filter((r) => r.enabled);
+    return repos.filter((r) => isLive(r) && r.enabled);
   },
 });
 
@@ -176,7 +178,9 @@ export const stats = query({
       .order("desc")
       .take(3000);
 
-    const inWindow = recent.filter((c) => c.authoredAt >= sinceIso);
+    const inWindow = recent.filter(
+      (c) => isLive(c) && c.authoredAt >= sinceIso,
+    );
     let matched = 0;
     let suggested = 0;
     for (const c of inWindow) {
@@ -184,7 +188,9 @@ export const stats = query({
         .query("commitMatches")
         .withIndex("by_commit", (q) => q.eq("commitId", c._id))
         .take(20);
-      const live = links.filter((m) => m.status !== "rejected");
+      const live = links.filter(
+        (m) => isLive(m) && m.status !== "rejected",
+      );
       if (live.some((m) => m.status === "accepted")) matched++;
       else if (live.some((m) => m.status === "suggested")) suggested++;
     }
@@ -250,9 +256,9 @@ export const aggregates = query({
 
     let total = 0;
     for (const c of rows) {
-      if (c.authoredAt < sinceIso) continue;
+      if (!isLive(c) || c.authoredAt < sinceIso) continue;
       const repo = repoMap.get(c.repoId);
-      if (!repo) continue;
+      if (!repo || !isLive(repo)) continue;
       if (args.projectId && !repo.projectIds.includes(args.projectId)) continue;
 
       const day = dayKey(c.authoredAt);
@@ -444,9 +450,9 @@ export const listForDashboard = query({
     const filtered: Row[] = [];
 
     for (const c of rows) {
-      if (c.authoredAt < sinceIso) continue;
+      if (!isLive(c) || c.authoredAt < sinceIso) continue;
       const repo = repoMap.get(c.repoId);
-      if (!repo) continue;
+      if (!repo || !isLive(repo)) continue;
       if (projectFilter && !repo.projectIds.includes(projectFilter)) continue;
 
       if (search) {
@@ -460,7 +466,9 @@ export const listForDashboard = query({
         .withIndex("by_commit", (q) => q.eq("commitId", c._id))
         .take(30);
 
-      const live = matchRows.filter((m) => m.status !== "rejected");
+      const live = matchRows.filter(
+        (m) => isLive(m) && m.status !== "rejected",
+      );
       const hasAccepted = live.some((m) => m.status === "accepted");
       const hasSuggested = live.some((m) => m.status === "suggested");
 
@@ -529,8 +537,9 @@ export const getCommit = query({
   args: { commitId: v.id("commits") },
   handler: async (ctx, args) => {
     const c = await ctx.db.get(args.commitId);
-    if (!c) return null;
+    if (!c || !isLive(c)) return null;
     const repo = await ctx.db.get(c.repoId);
+    if (repo && !isLive(repo)) return null;
     const matchRows = await ctx.db
       .query("commitMatches")
       .withIndex("by_commit", (q) => q.eq("commitId", c._id))
@@ -538,11 +547,12 @@ export const getCommit = query({
 
     const matches = [];
     for (const m of matchRows) {
-      if (m.status === "rejected") continue;
+      if (!isLive(m) || m.status === "rejected") continue;
       const task = await ctx.db
         .query("tasks")
         .withIndex("by_nizekId", (q) => q.eq("nizekId", m.taskNizekId))
         .unique();
+      if (task && !isLive(task)) continue;
       const project = task
         ? await ctx.db
             .query("projects")
@@ -595,10 +605,11 @@ export const listForTask = query({
 
     const out = [];
     for (const m of matches) {
-      if (m.status === "rejected") continue;
+      if (!isLive(m) || m.status === "rejected") continue;
       const commit = await ctx.db.get(m.commitId);
-      if (!commit) continue;
+      if (!commit || !isLive(commit)) continue;
       const repo = await ctx.db.get(commit.repoId);
+      if (repo && !isLive(repo)) continue;
       out.push({
         matchId: m._id,
         status: m.status,
@@ -668,6 +679,7 @@ export const upsertMatch = internalMutation({
         method: args.method,
         model: args.model,
         updatedAt: Date.now(),
+        deletedAt: undefined,
       });
       return existing._id;
     }
@@ -701,15 +713,24 @@ export const unmatchedForMatching = internalQuery({
 
     const out = [];
     for (const c of recent) {
-      if (c.authoredAt < sinceIso) continue;
+      if (!isLive(c) || c.authoredAt < sinceIso) continue;
       const repo = repoMap.get(c.repoId);
-      if (!repo || !repo.enabled || repo.projectIds.length === 0) continue;
+      if (
+        !repo ||
+        !isLive(repo) ||
+        !repo.enabled ||
+        repo.projectIds.length === 0
+      ) {
+        continue;
+      }
 
       const matches = await ctx.db
         .query("commitMatches")
         .withIndex("by_commit", (q) => q.eq("commitId", c._id))
         .take(20);
-      const live = matches.filter((m) => m.status !== "rejected");
+      const live = matches.filter(
+        (m) => isLive(m) && m.status !== "rejected",
+      );
       if (live.length > 0) continue;
 
       out.push({
@@ -738,6 +759,7 @@ export const tasksForProjects = internalQuery({
         .withIndex("by_project", (q) => q.eq("projectId", projectId))
         .take(500);
       for (const t of tasks) {
+        if (!isLive(t)) continue;
         out.push({
           nizekId: t.nizekId,
           projectId: t.projectId,

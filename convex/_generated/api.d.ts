@@ -13,6 +13,7 @@ import type * as crons from "../crons.js";
 import type * as gitActions from "../gitActions.js";
 import type * as gitRepos from "../gitRepos.js";
 import type * as lib_parse from "../lib/parse.js";
+import type * as lib_softDelete from "../lib/softDelete.js";
 import type * as lib_taskCode from "../lib/taskCode.js";
 import type * as matchActions from "../matchActions.js";
 import type * as nizekActions from "../nizekActions.js";
@@ -35,6 +36,7 @@ declare const fullApi: ApiFromModules<{
   gitActions: typeof gitActions;
   gitRepos: typeof gitRepos;
   "lib/parse": typeof lib_parse;
+  "lib/softDelete": typeof lib_softDelete;
   "lib/taskCode": typeof lib_taskCode;
   matchActions: typeof matchActions;
   nizekActions: typeof nizekActions;

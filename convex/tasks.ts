@@ -1,5 +1,6 @@
 import { v } from "convex/values";
 import { mutation, query } from "./_generated/server";
+import { isLive } from "./lib/softDelete";
 
 export const get = query({
   args: { nizekId: v.string() },
@@ -8,7 +9,7 @@ export const get = query({
       .query("tasks")
       .withIndex("by_nizekId", (q) => q.eq("nizekId", args.nizekId))
       .unique();
-    if (!task) return null;
+    if (!task || !isLive(task)) return null;
     const project = await ctx.db
       .query("projects")
       .withIndex("by_nizekId", (q) => q.eq("nizekId", task.projectId))
@@ -65,7 +66,7 @@ export const saveExtras = mutation({
       .query("tasks")
       .withIndex("by_nizekId", (q) => q.eq("nizekId", args.nizekId))
       .unique();
-    if (!task) throw new Error("Task not found");
+    if (!task || !isLive(task)) throw new Error("Task not found");
     // Validate JSON shape lightly
     JSON.parse(args.extrasJson);
     await ctx.db.patch(task._id, {
@@ -90,7 +91,7 @@ export const listForBoard = query({
     projectIds: v.optional(v.array(v.string())),
   },
   handler: async (ctx, args) => {
-    const projects = await ctx.db.query("projects").take(100);
+    const projects = (await ctx.db.query("projects").take(200)).filter(isLive);
     const enabled =
       args.projectIds !== undefined
         ? new Set(args.projectIds)
@@ -103,7 +104,7 @@ export const listForBoard = query({
     );
 
     // Cap read — board is a finite set of team tasks
-    const tasks = await ctx.db.query("tasks").take(2000);
+    const tasks = (await ctx.db.query("tasks").take(5000)).filter(isLive);
     const search = args.search?.trim().toLowerCase() ?? "";
     const stageSet = args.stages?.length ? new Set(args.stages) : null;
     const typeSet = args.types?.length ? new Set(args.types) : null;
@@ -150,12 +151,12 @@ export const filterOptions = query({
     projectIds: v.optional(v.array(v.string())),
   },
   handler: async (ctx, args) => {
-    const projects = await ctx.db.query("projects").take(100);
+    const projects = (await ctx.db.query("projects").take(200)).filter(isLive);
     const enabled =
       args.projectIds !== undefined
         ? new Set(args.projectIds)
         : new Set(projects.map((p) => p.nizekId));
-    const tasks = await ctx.db.query("tasks").take(2000);
+    const tasks = (await ctx.db.query("tasks").take(5000)).filter(isLive);
     const relevant = tasks.filter((t) => enabled.has(t.projectId));
     return {
       stages: [...new Set(relevant.map((t) => t.stage))].sort(),
@@ -241,7 +242,7 @@ export const listForRelease = query({
       .query("projects")
       .withIndex("by_nizekId", (q) => q.eq("nizekId", args.projectId))
       .unique();
-    if (!project) return empty;
+    if (!project || !isLive(project)) return empty;
 
     const fromMs = Date.parse(args.fromIso);
     const toMs = Date.parse(args.toIso);
@@ -251,16 +252,18 @@ export const listForRelease = query({
     const fromIso = args.fromIso;
     const toIso = args.toIso;
 
-    const repos = (await ctx.db.query("gitRepos").take(200)).filter((r) =>
-      r.projectIds.includes(args.projectId),
+    const repos = (await ctx.db.query("gitRepos").take(200)).filter(
+      (r) => isLive(r) && r.projectIds.includes(args.projectId),
     );
     const repoMap = new Map(repos.map((r) => [r._id, r]));
 
-    const commitRows = await ctx.db
-      .query("commits")
-      .withIndex("by_authoredAt")
-      .order("desc")
-      .take(4000);
+    const commitRows = (
+      await ctx.db
+        .query("commits")
+        .withIndex("by_authoredAt")
+        .order("desc")
+        .take(4000)
+    ).filter(isLive);
 
     type MatchInfo = {
       taskNizekId: string;
@@ -298,12 +301,13 @@ export const listForRelease = query({
 
       const matchedTasks: MatchInfo[] = [];
       for (const m of matchRows) {
-        if (m.status === "rejected") continue;
+        if (!isLive(m) || m.status === "rejected") continue;
         if (m.projectId !== args.projectId) continue;
         const task = await ctx.db
           .query("tasks")
           .withIndex("by_nizekId", (q) => q.eq("nizekId", m.taskNizekId))
           .unique();
+        if (task && !isLive(task)) continue;
         const prefix =
           task?.taskType === "BUG"
             ? "B"
@@ -339,10 +343,12 @@ export const listForRelease = query({
       });
     }
 
-    const projectTasks = await ctx.db
-      .query("tasks")
-      .withIndex("by_project", (q) => q.eq("projectId", args.projectId))
-      .take(2000);
+    const projectTasks = (
+      await ctx.db
+        .query("tasks")
+        .withIndex("by_project", (q) => q.eq("projectId", args.projectId))
+        .take(2000)
+    ).filter(isLive);
 
     const taskById = new Map(projectTasks.map((t) => [t.nizekId, t]));
 
