@@ -162,12 +162,13 @@ export default defineSchema({
     .index("by_thread", ["threadKey"])
     .index("by_createdAt", ["createdAt"]),
 
-  /** Cached AI digests keyed by business-day window. */
+  /** Saved AI digests — one row per generation (history kept). */
   summaries: defineTable({
     windowKey: v.string(),
     fromIso: v.string(),
     toIso: v.string(),
     days: v.array(v.string()),
+    label: v.optional(v.string()),
     headline: v.string(),
     narrative: v.string(),
     /** Full structured SummaryPayload JSON */
@@ -182,5 +183,8 @@ export default defineSchema({
       tasks: v.number(),
       projects: v.number(),
     }),
-  }).index("by_windowKey", ["windowKey"]),
+  })
+    .index("by_windowKey", ["windowKey"])
+    .index("by_windowKey_generatedAt", ["windowKey", "generatedAt"])
+    .index("by_generatedAt", ["generatedAt"]),
 });

@@ -4,6 +4,7 @@ import {
   internalQuery,
   query,
 } from "./_generated/server";
+import type { Doc, Id } from "./_generated/dataModel";
 import { isLive } from "./lib/softDelete";
 import { taskCode } from "./lib/taskCode";
 import {
@@ -74,32 +75,48 @@ function inIsoWindow(iso: string | null | undefined, fromIso: string, toIso: str
   return iso >= fromIso && iso <= toIso;
 }
 
+function rowLabel(row: Doc<"summaries">) {
+  if (row.label?.trim()) return row.label.trim();
+  if (row.days.length === 0) return row.windowKey;
+  if (row.days.length === 1) return row.days[0]!;
+  return `${row.days[0]} – ${row.days[row.days.length - 1]}`;
+}
+
+function publicRow(row: Doc<"summaries">) {
+  return {
+    _id: row._id,
+    windowKey: row.windowKey,
+    fromIso: row.fromIso,
+    toIso: row.toIso,
+    days: row.days,
+    label: rowLabel(row),
+    headline: row.headline,
+    narrative: row.narrative,
+    payloadJson: row.payloadJson,
+    statsJson: row.statsJson,
+    model: row.model,
+    generatedAt: row.generatedAt,
+    inputCounts: row.inputCounts,
+  };
+}
+
 export const currentWindow = query({
   args: {},
   handler: async () => lastBusinessDays({ count: 2, timeZone: BUSINESS_TZ }),
 });
 
+/** Latest saved digest for a window (for auto-load / cache hit). */
 export const getCached = query({
   args: { windowKey: v.string() },
   handler: async (ctx, args) => {
     const row = await ctx.db
       .query("summaries")
-      .withIndex("by_windowKey", (q) => q.eq("windowKey", args.windowKey))
-      .unique();
-    if (!row) return null;
-    return {
-      windowKey: row.windowKey,
-      fromIso: row.fromIso,
-      toIso: row.toIso,
-      days: row.days,
-      headline: row.headline,
-      narrative: row.narrative,
-      payloadJson: row.payloadJson,
-      statsJson: row.statsJson,
-      model: row.model,
-      generatedAt: row.generatedAt,
-      inputCounts: row.inputCounts,
-    };
+      .withIndex("by_windowKey_generatedAt", (q) =>
+        q.eq("windowKey", args.windowKey),
+      )
+      .order("desc")
+      .first();
+    return row ? publicRow(row) : null;
   },
 });
 
@@ -108,8 +125,42 @@ export const getCachedInternal = internalQuery({
   handler: async (ctx, args) => {
     return await ctx.db
       .query("summaries")
-      .withIndex("by_windowKey", (q) => q.eq("windowKey", args.windowKey))
-      .unique();
+      .withIndex("by_windowKey_generatedAt", (q) =>
+        q.eq("windowKey", args.windowKey),
+      )
+      .order("desc")
+      .first();
+  },
+});
+
+export const get = query({
+  args: { id: v.id("summaries") },
+  handler: async (ctx, args) => {
+    const row = await ctx.db.get(args.id);
+    return row ? publicRow(row) : null;
+  },
+});
+
+/** Newest-first history of generated digests. */
+export const list = query({
+  args: { limit: v.optional(v.number()) },
+  handler: async (ctx, args) => {
+    const limit = Math.max(1, Math.min(args.limit ?? 40, 100));
+    const rows = await ctx.db
+      .query("summaries")
+      .withIndex("by_generatedAt")
+      .order("desc")
+      .take(limit);
+    return rows.map((row) => ({
+      _id: row._id as Id<"summaries">,
+      windowKey: row.windowKey,
+      label: rowLabel(row),
+      days: row.days,
+      headline: row.headline,
+      model: row.model,
+      generatedAt: row.generatedAt,
+      inputCounts: row.inputCounts,
+    }));
   },
 });
 
@@ -119,6 +170,7 @@ export const saveSummary = internalMutation({
     fromIso: v.string(),
     toIso: v.string(),
     days: v.array(v.string()),
+    label: v.string(),
     headline: v.string(),
     narrative: v.string(),
     payloadJson: v.string(),
@@ -133,25 +185,7 @@ export const saveSummary = internalMutation({
     }),
   },
   handler: async (ctx, args) => {
-    const existing = await ctx.db
-      .query("summaries")
-      .withIndex("by_windowKey", (q) => q.eq("windowKey", args.windowKey))
-      .unique();
-    if (existing) {
-      await ctx.db.patch(existing._id, {
-        fromIso: args.fromIso,
-        toIso: args.toIso,
-        days: args.days,
-        headline: args.headline,
-        narrative: args.narrative,
-        payloadJson: args.payloadJson,
-        statsJson: args.statsJson,
-        model: args.model,
-        generatedAt: args.generatedAt,
-        inputCounts: args.inputCounts,
-      });
-      return existing._id;
-    }
+    // Always insert — keep full generation history.
     return await ctx.db.insert("summaries", args);
   },
 });

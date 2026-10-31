@@ -3,6 +3,7 @@
 import { action } from "./_generated/server";
 import { internal } from "./_generated/api";
 import { v } from "convex/values";
+import type { Id } from "./_generated/dataModel";
 import {
   BUSINESS_TZ,
   lastBusinessDays,
@@ -37,6 +38,7 @@ export type SummaryPayload = {
 };
 
 export type SummaryView = {
+  id: Id<"summaries">;
   windowKey: string;
   fromIso: string;
   toIso: string;
@@ -283,11 +285,12 @@ export const generate = action({
         const summary = parseCachedRow(cached);
         return {
           ok: true,
+          id: cached._id,
           windowKey: window.windowKey,
           fromIso: window.fromIso,
           toIso: window.toIso,
           days: window.days,
-          label: window.label,
+          label: cached.label?.trim() || window.label,
           timeZone: window.timeZone,
           cached: true,
           model: cached.model,
@@ -345,11 +348,12 @@ export const generate = action({
       };
 
       const generatedAt = Date.now();
-      await ctx.runMutation(internal.summary.saveSummary, {
+      const id = await ctx.runMutation(internal.summary.saveSummary, {
         windowKey: window.windowKey,
         fromIso: window.fromIso,
         toIso: window.toIso,
         days: window.days,
+        label: window.label,
         headline: summary.headline,
         narrative: summary.narrative,
         payloadJson: JSON.stringify(summary),
@@ -361,6 +365,7 @@ export const generate = action({
 
       return {
         ok: true,
+        id,
         windowKey: window.windowKey,
         fromIso: window.fromIso,
         toIso: window.toIso,
