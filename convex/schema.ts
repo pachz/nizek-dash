@@ -159,5 +159,28 @@ export default defineSchema({
   })
     .index("by_nizekId", ["nizekId"])
     .index("by_thread_createdAt", ["threadKey", "createdAt"])
-    .index("by_thread", ["threadKey"]),
+    .index("by_thread", ["threadKey"])
+    .index("by_createdAt", ["createdAt"]),
+
+  /** Cached AI digests keyed by business-day window. */
+  summaries: defineTable({
+    windowKey: v.string(),
+    fromIso: v.string(),
+    toIso: v.string(),
+    days: v.array(v.string()),
+    headline: v.string(),
+    narrative: v.string(),
+    /** Full structured SummaryPayload JSON */
+    payloadJson: v.string(),
+    statsJson: v.string(),
+    model: v.string(),
+    generatedAt: v.number(),
+    /** Counts fed into the model / KPIs */
+    inputCounts: v.object({
+      commits: v.number(),
+      messages: v.number(),
+      tasks: v.number(),
+      projects: v.number(),
+    }),
+  }).index("by_windowKey", ["windowKey"]),
 });

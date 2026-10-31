@@ -7,6 +7,7 @@ import Admin from "./Admin.tsx";
 import Commits from "./Commits.tsx";
 import Chats from "./Chats.tsx";
 import ReleaseMaker from "./ReleaseMaker.tsx";
+import Summary from "./Summary.tsx";
 
 const convexUrl = import.meta.env.VITE_CONVEX_URL;
 if (!convexUrl) {
@@ -30,6 +31,9 @@ function Root() {
   const path = useSyncExternalStore(subscribePath, getPath, () => "/");
   if (path === "/admin" || path.startsWith("/admin/")) {
     return <Admin />;
+  }
+  if (path === "/summary" || path.startsWith("/summary/")) {
+    return <Summary />;
   }
   if (path === "/commits" || path.startsWith("/commits/")) {
     return <Commits />;

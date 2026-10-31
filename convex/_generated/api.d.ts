@@ -15,6 +15,7 @@ import type * as commits from "../commits.js";
 import type * as crons from "../crons.js";
 import type * as gitActions from "../gitActions.js";
 import type * as gitRepos from "../gitRepos.js";
+import type * as lib_businessDays from "../lib/businessDays.js";
 import type * as lib_parse from "../lib/parse.js";
 import type * as lib_softDelete from "../lib/softDelete.js";
 import type * as lib_taskCode from "../lib/taskCode.js";
@@ -24,6 +25,8 @@ import type * as projects from "../projects.js";
 import type * as releaseActions from "../releaseActions.js";
 import type * as seed from "../seed.js";
 import type * as settings from "../settings.js";
+import type * as summary from "../summary.js";
+import type * as summaryActions from "../summaryActions.js";
 import type * as syncInternal from "../syncInternal.js";
 import type * as tasks from "../tasks.js";
 
@@ -41,6 +44,7 @@ declare const fullApi: ApiFromModules<{
   crons: typeof crons;
   gitActions: typeof gitActions;
   gitRepos: typeof gitRepos;
+  "lib/businessDays": typeof lib_businessDays;
   "lib/parse": typeof lib_parse;
   "lib/softDelete": typeof lib_softDelete;
   "lib/taskCode": typeof lib_taskCode;
@@ -50,6 +54,8 @@ declare const fullApi: ApiFromModules<{
   releaseActions: typeof releaseActions;
   seed: typeof seed;
   settings: typeof settings;
+  summary: typeof summary;
+  summaryActions: typeof summaryActions;
   syncInternal: typeof syncInternal;
   tasks: typeof tasks;
 }>;
