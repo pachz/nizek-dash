@@ -8,6 +8,10 @@ import Commits from "./Commits.tsx";
 import Chats from "./Chats.tsx";
 import ReleaseMaker from "./ReleaseMaker.tsx";
 import Summary from "./Summary.tsx";
+import { applyTheme, subscribeTheme } from "./lib/theme";
+
+applyTheme();
+subscribeTheme(() => applyTheme());
 
 const convexUrl = import.meta.env.VITE_CONVEX_URL;
 if (!convexUrl) {

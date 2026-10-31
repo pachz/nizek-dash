@@ -5,6 +5,23 @@
     <link rel="icon" type="image/png" href="/nizek-logo.png" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="theme-color" content="#e8eef6" />
+    <script>
+      (function () {
+        try {
+          var key = "nizek-plus:theme:v1";
+          var pref = localStorage.getItem(key);
+          var dark =
+            pref === "dark" ||
+            ((pref !== "light") &&
+              window.matchMedia("(prefers-color-scheme: dark)").matches);
+          var theme = dark ? "dark" : "light";
+          document.documentElement.dataset.theme = theme;
+          document.documentElement.style.colorScheme = theme;
+          var meta = document.querySelector('meta[name="theme-color"]');
+          if (meta) meta.setAttribute("content", dark ? "#0c0e14" : "#e8eef6");
+        } catch (e) {}
+      })();
+    </script>
     <title>Nizek+</title>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />

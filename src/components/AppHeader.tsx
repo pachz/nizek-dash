@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 import { useSyncExternalStore } from "react";
+import { ThemeToggle } from "./ThemeToggle";
 
 export type AppSection =
   | "board"
@@ -109,7 +110,10 @@ export function AppHeader({ tools, subtitle }: AppHeaderProps) {
         ))}
       </nav>
 
-      {tools ? <div className="top-actions">{tools}</div> : null}
+      <div className="top-actions">
+        {tools}
+        <ThemeToggle />
+      </div>
     </header>
   );
 }
