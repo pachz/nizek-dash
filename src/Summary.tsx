@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { useAction, useQuery } from "convex/react";
 import { api } from "../convex/_generated/api";
 import type { Id } from "../convex/_generated/dataModel";
@@ -179,8 +179,6 @@ export default function Summary() {
     setView(rowToView(selectedRow, window.timeZone, true));
   }, [selectedRow, window]);
 
-  const dayChips = useMemo(() => window?.days ?? [], [window]);
-
   async function runGenerate(force: boolean) {
     setBusy(true);
     setError(null);
@@ -220,25 +218,18 @@ export default function Summary() {
 
       <AppHeader
         tools={
-          <div className="summary-tools">
-            {dayChips.map((d) => (
-              <span key={d} className="chip summary-day-chip">
-                {d}
-              </span>
-            ))}
-            <button
-              type="button"
-              className="primary solid"
-              disabled={busy || !window}
-              onClick={() => void runGenerate(Boolean(view) || hasHistory)}
-            >
-              {busy
-                ? "Working…"
-                : view || hasHistory
-                  ? "Generate new"
-                  : "Generate digest"}
-            </button>
-          </div>
+          <button
+            type="button"
+            className="primary solid"
+            disabled={busy || !window}
+            onClick={() => void runGenerate(Boolean(view) || hasHistory)}
+          >
+            {busy
+              ? "Working…"
+              : view || hasHistory
+                ? "Generate new"
+                : "Generate digest"}
+          </button>
         }
       />
 

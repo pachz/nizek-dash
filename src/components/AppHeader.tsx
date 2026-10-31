@@ -111,7 +111,7 @@ export function AppHeader({ tools, subtitle }: AppHeaderProps) {
       </nav>
 
       <div className="top-actions">
-        {tools}
+        {tools ? <div className="top-actions-tools">{tools}</div> : null}
         <ThemeToggle />
       </div>
     </header>
