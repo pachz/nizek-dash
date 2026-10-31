@@ -1,7 +1,7 @@
 import type { ReactNode } from "react";
 import { useSyncExternalStore } from "react";
 
-export type AppSection = "board" | "commits" | "release" | "admin";
+export type AppSection = "board" | "commits" | "chats" | "release" | "admin";
 
 const NAV: Array<{
   id: AppSection;
@@ -15,6 +15,12 @@ const NAV: Array<{
     href: "/commits",
     label: "Commits",
     match: (p) => p === "/commits" || p.startsWith("/commits/"),
+  },
+  {
+    id: "chats",
+    href: "/chats",
+    label: "Chats",
+    match: (p) => p === "/chats" || p.startsWith("/chats/"),
   },
   {
     id: "release",
@@ -33,6 +39,7 @@ const NAV: Array<{
 const SUBTITLES: Record<AppSection, string> = {
   board: "Combined board",
   commits: "Commit intelligence",
+  chats: "Panel chats",
   release: "Release maker",
   admin: "Admin",
 };

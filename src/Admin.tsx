@@ -91,6 +91,7 @@ function AdminPanel({ onLock }: { onLock: () => void }) {
   const importExport = useMutation(api.seed.importExport);
   const rotateToken = useAction(api.nizekActions.rotateToken);
   const syncAll = useAction(api.nizekActions.syncAll);
+  const syncChats = useAction(api.chatActions.syncChats);
   const syncCommits = useAction(api.gitActions.syncCommits);
   const runMatching = useAction(api.matchActions.runMatching);
   const openaiStatus = useAction(api.matchActions.openaiStatus);
@@ -188,6 +189,25 @@ function AdminPanel({ onLock }: { onLock: () => void }) {
             >
               Sync now
             </button>
+            <button
+              type="button"
+              className="ghost"
+              disabled={pending}
+              onClick={() =>
+                void runJob("Syncing Panel chats…", async () => {
+                  const r = await syncChats({ pagesPerThread: 2 });
+                  if (!r.ok) {
+                    showErr(r.error);
+                    return;
+                  }
+                  showOk(
+                    `Chats · ${r.threads} threads · ${r.messages} msgs · +${r.inserted} / ~${r.updated}`,
+                  );
+                })
+              }
+            >
+              Sync chats
+            </button>
           </>
         }
       />
@@ -197,6 +217,15 @@ function AdminPanel({ onLock }: { onLock: () => void }) {
         <span className="pill">{projects?.length ?? 0} projects</span>
         {settings?.sessionEmail ? (
           <span className="pill soft">{settings.sessionEmail}</span>
+        ) : null}
+        {settings?.lastChatSyncAt ? (
+          <span className="pill soft">
+            Chats synced{" "}
+            {new Date(settings.lastChatSyncAt).toLocaleTimeString()}
+          </span>
+        ) : null}
+        {settings?.lastChatError ? (
+          <span className="pill danger">{settings.lastChatError}</span>
         ) : null}
         {settings?.lastError ? (
           <span className="pill danger">{settings.lastError}</span>

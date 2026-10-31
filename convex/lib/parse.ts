@@ -618,3 +618,369 @@ export function extractTaskDetail(
     activity,
   };
 }
+
+/* ─── Panel Messages / Chat ─────────────────────────────────────────── */
+
+export type ChatAttachment = {
+  id?: string | null;
+  name: string;
+  url: string;
+  contentType?: string | null;
+  sizeBytes?: number | null;
+  isImage?: boolean | null;
+};
+
+export type ChatReaction = {
+  emoji: string;
+  memberIds: string[];
+};
+
+export type ChatMessage = {
+  id: string;
+  authorId: string;
+  authorName: string;
+  authorImageUrl?: string | null;
+  body: string;
+  createdAt: string;
+  updatedAt: string;
+  edited: boolean;
+  replyToId?: string | null;
+  attachments: ChatAttachment[];
+  reactions: ChatReaction[];
+  kind: string;
+  important: boolean;
+  task?: unknown;
+  mentions?: unknown;
+  deadlineReminder?: unknown;
+  noteComment?: unknown;
+  taskComment?: unknown;
+  noteActivity?: unknown;
+  clientIssue?: unknown;
+  proofBypass?: unknown;
+};
+
+export type ChatThread = {
+  id: string;
+  kind: string;
+  name: string;
+  subtitle?: string | null;
+  projectId?: string | null;
+  conversationId?: string | null;
+  logoUrl?: string | null;
+  peerImageUrl?: string | null;
+  peerMemberIds?: string[];
+  lastMessage?: string | null;
+  lastAuthor?: string | null;
+  lastAt?: string | null;
+  unread: number;
+  avatar?: string | null;
+  initials?: string | null;
+  inactive?: boolean;
+  readOnly?: boolean;
+};
+
+export type ChatThreadPage = {
+  messages: ChatMessage[];
+  hasMore: boolean;
+};
+
+/** One-level unescape of RSC string escapes (`\"` → `"`, `\\` → `\`). */
+export function lightUnescape(html: string): string {
+  return html.replace(/\\"/g, '"').replace(/\\\\/g, "\\");
+}
+
+function extractJsonArrayAt(html: string, marker: string): string | null {
+  const start = html.indexOf(marker);
+  if (start < 0) return null;
+  let i = start + marker.length - 1;
+  if (html[i] !== "[") {
+    while (i < html.length && html[i] !== "[") i++;
+  }
+  if (html[i] !== "[") return null;
+  let depth = 0;
+  let inStr = false;
+  let esc = false;
+  const from = i;
+  for (; i < html.length; i++) {
+    const ch = html[i]!;
+    if (inStr) {
+      if (esc) {
+        esc = false;
+        continue;
+      }
+      if (ch === "\\") {
+        esc = true;
+        continue;
+      }
+      if (ch === '"') inStr = false;
+      continue;
+    }
+    if (ch === '"') inStr = true;
+    else if (ch === "[") depth++;
+    else if (ch === "]") {
+      depth--;
+      if (depth === 0) return html.slice(from, i + 1);
+    }
+  }
+  return null;
+}
+
+function extractJsonObjectFromBrace(
+  html: string,
+  braceIdx: number,
+): string | null {
+  if (html[braceIdx] !== "{") return null;
+  let depth = 0;
+  let inStr = false;
+  let esc = false;
+  const from = braceIdx;
+  for (let i = braceIdx; i < html.length; i++) {
+    const ch = html[i]!;
+    if (inStr) {
+      if (esc) {
+        esc = false;
+        continue;
+      }
+      if (ch === "\\") {
+        esc = true;
+        continue;
+      }
+      if (ch === '"') inStr = false;
+      continue;
+    }
+    if (ch === '"') inStr = true;
+    else if (ch === "{") depth++;
+    else if (ch === "}") {
+      depth--;
+      if (depth === 0) return html.slice(from, i + 1);
+    }
+  }
+  return null;
+}
+
+function resolveFlightRefsDeep(html: string, value: unknown): unknown {
+  if (typeof value === "string") {
+    if (/^\$[0-9a-z]+$/i.test(value)) {
+      return resolveFlightRef(html, value) ?? value;
+    }
+    return value;
+  }
+  if (Array.isArray(value)) {
+    return value.map((v) => resolveFlightRefsDeep(html, v));
+  }
+  if (value && typeof value === "object") {
+    const out: Record<string, unknown> = {};
+    for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
+      out[k] = resolveFlightRefsDeep(html, v);
+    }
+    return out;
+  }
+  return value;
+}
+
+function normalizeAttachment(raw: Record<string, unknown>): ChatAttachment | null {
+  const url = typeof raw.url === "string" ? raw.url : null;
+  const name =
+    typeof raw.name === "string"
+      ? raw.name
+      : typeof raw.filename === "string"
+        ? raw.filename
+        : null;
+  if (!url || !name) return null;
+  return {
+    id: typeof raw.id === "string" ? raw.id : null,
+    name,
+    url,
+    contentType:
+      typeof raw.contentType === "string"
+        ? raw.contentType
+        : typeof raw.mimeType === "string"
+          ? raw.mimeType
+          : null,
+    sizeBytes:
+      typeof raw.sizeBytes === "number"
+        ? raw.sizeBytes
+        : typeof raw.fileSize === "number"
+          ? raw.fileSize
+          : null,
+    isImage: typeof raw.isImage === "boolean" ? raw.isImage : null,
+  };
+}
+
+function normalizeMessage(raw: Record<string, unknown>): ChatMessage | null {
+  const id = typeof raw.id === "string" ? raw.id : null;
+  if (!id) return null;
+  const attachments = Array.isArray(raw.attachments)
+    ? raw.attachments
+        .map((a) =>
+          a && typeof a === "object"
+            ? normalizeAttachment(a as Record<string, unknown>)
+            : null,
+        )
+        .filter((a): a is ChatAttachment => !!a)
+    : [];
+  const reactions = Array.isArray(raw.reactions)
+    ? raw.reactions
+        .map((r) => {
+          if (!r || typeof r !== "object") return null;
+          const o = r as Record<string, unknown>;
+          if (typeof o.emoji !== "string") return null;
+          return {
+            emoji: o.emoji,
+            memberIds: Array.isArray(o.memberIds)
+              ? o.memberIds.filter((x): x is string => typeof x === "string")
+              : [],
+          };
+        })
+        .filter((r): r is ChatReaction => !!r)
+    : [];
+  return {
+    id,
+    authorId: typeof raw.authorId === "string" ? raw.authorId : "",
+    authorName: typeof raw.authorName === "string" ? raw.authorName : "Unknown",
+    authorImageUrl:
+      typeof raw.authorImageUrl === "string" ? raw.authorImageUrl : null,
+    body: typeof raw.body === "string" ? raw.body : "",
+    createdAt: typeof raw.createdAt === "string" ? raw.createdAt : "",
+    updatedAt: typeof raw.updatedAt === "string" ? raw.updatedAt : "",
+    edited: Boolean(raw.edited),
+    replyToId: typeof raw.replyToId === "string" ? raw.replyToId : null,
+    attachments,
+    reactions,
+    kind: typeof raw.kind === "string" ? raw.kind : "message",
+    important: Boolean(raw.important),
+    task: raw.task ?? null,
+    mentions: raw.mentions ?? [],
+    deadlineReminder: raw.deadlineReminder ?? null,
+    noteComment: raw.noteComment ?? null,
+    taskComment: raw.taskComment ?? null,
+    noteActivity: raw.noteActivity ?? null,
+    clientIssue: raw.clientIssue ?? null,
+    proofBypass: raw.proofBypass ?? null,
+  };
+}
+
+function normalizeThread(raw: Record<string, unknown>): ChatThread | null {
+  const id = typeof raw.id === "string" ? raw.id : null;
+  const kind = typeof raw.kind === "string" ? raw.kind : null;
+  const name = typeof raw.name === "string" ? raw.name : null;
+  if (!id || !kind || !name) return null;
+  return {
+    id,
+    kind,
+    name,
+    subtitle: typeof raw.subtitle === "string" ? raw.subtitle : null,
+    projectId: typeof raw.projectId === "string" ? raw.projectId : null,
+    conversationId:
+      typeof raw.conversationId === "string" ? raw.conversationId : null,
+    logoUrl: typeof raw.logoUrl === "string" ? raw.logoUrl : null,
+    peerImageUrl:
+      typeof raw.peerImageUrl === "string" ? raw.peerImageUrl : null,
+    peerMemberIds: Array.isArray(raw.peerMemberIds)
+      ? raw.peerMemberIds.filter((x): x is string => typeof x === "string")
+      : [],
+    lastMessage: typeof raw.lastMessage === "string" ? raw.lastMessage : null,
+    lastAuthor: typeof raw.lastAuthor === "string" ? raw.lastAuthor : null,
+    lastAt: typeof raw.lastAt === "string" ? raw.lastAt : null,
+    unread: typeof raw.unread === "number" ? raw.unread : 0,
+    avatar: typeof raw.avatar === "string" ? raw.avatar : null,
+    initials: typeof raw.initials === "string" ? raw.initials : null,
+    inactive: Boolean(raw.inactive),
+    readOnly: Boolean(raw.readOnly),
+  };
+}
+
+/** Thread list from `/dashboard/messages` RSC HTML. */
+export function extractChatThreads(html: string): ChatThread[] {
+  const once = lightUnescape(html);
+  const arr =
+    extractJsonArrayAt(once, '"threads":[') ??
+    extractJsonArrayAt(html, '\\"threads\\":[');
+  if (!arr) return [];
+  try {
+    const parsed = JSON.parse(arr) as unknown[];
+    return parsed
+      .map((t) =>
+        t && typeof t === "object"
+          ? normalizeThread(t as Record<string, unknown>)
+          : null,
+      )
+      .filter((t): t is ChatThread => !!t);
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * Parse Next.js server-action flight response for `getThreadMessages`.
+ * Payload looks like: `0:{"a":"$@1",...}` then `N:T…` refs then `1:{"messages":[…],"hasMore":…}`.
+ */
+export function parseGetThreadMessagesResponse(text: string): ChatThreadPage {
+  const needle = '1:{"messages":';
+  let at = text.indexOf(needle);
+  if (at < 0) {
+    // Sometimes the row id isn't 1 — find any N:{"messages":
+    const m = text.match(/\d+:\{"messages":/);
+    if (!m || m.index == null) {
+      return { messages: [], hasMore: false };
+    }
+    at = m.index;
+  }
+  const braceIdx = text.indexOf("{", at);
+  const objStr = extractJsonObjectFromBrace(text, braceIdx);
+  if (!objStr) return { messages: [], hasMore: false };
+  try {
+    const parsed = resolveFlightRefsDeep(
+      text,
+      JSON.parse(objStr),
+    ) as Record<string, unknown>;
+    const messages = Array.isArray(parsed.messages)
+      ? parsed.messages
+          .map((m) =>
+            m && typeof m === "object"
+              ? normalizeMessage(m as Record<string, unknown>)
+              : null,
+          )
+          .filter((m): m is ChatMessage => !!m)
+      : [];
+    return {
+      messages,
+      hasMore: Boolean(parsed.hasMore),
+    };
+  } catch {
+    return { messages: [], hasMore: false };
+  }
+}
+
+/** Stable local key for a Panel chat thread. */
+export function chatThreadKey(thread: {
+  id?: string | null;
+  kind?: string | null;
+  projectId?: string | null;
+  conversationId?: string | null;
+}): string {
+  if (thread.id) return thread.id;
+  if (thread.kind === "project" && thread.projectId) {
+    return `project-${thread.projectId}`;
+  }
+  if (thread.conversationId) return `conv-${thread.conversationId}`;
+  return `unknown-${thread.projectId ?? "x"}`;
+}
+
+/** Args for Panel `getThreadMessages` server action. */
+export function chatThreadFetchArgs(thread: {
+  kind?: string | null;
+  projectId?: string | null;
+  conversationId?: string | null;
+  id?: string | null;
+}): { projectId: string } | { conversationId: string } | null {
+  if (thread.kind === "project" || thread.id?.startsWith("project-")) {
+    const projectId =
+      thread.projectId ??
+      (thread.id?.startsWith("project-") ? thread.id.slice("project-".length) : null);
+    return projectId ? { projectId } : null;
+  }
+  if (thread.conversationId) return { conversationId: thread.conversationId };
+  if (thread.projectId) return { projectId: thread.projectId };
+  return null;
+}

@@ -31,4 +31,11 @@ crons.interval(
   internal.matchActions.runMatchingInternal,
 );
 
+// Pull Panel chats (threads + latest messages)
+crons.interval(
+  "sync panel chats",
+  { minutes: 2 },
+  internal.chatActions.syncChatsInternal,
+);
+
 export default crons;

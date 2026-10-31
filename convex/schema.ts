@@ -19,6 +19,8 @@ export default defineSchema({
     lastCommitError: v.optional(v.string()),
     lastMatchAt: v.optional(v.number()),
     lastMatchError: v.optional(v.string()),
+    lastChatSyncAt: v.optional(v.number()),
+    lastChatError: v.optional(v.string()),
   }).index("by_key", ["key"]),
 
   projects: defineTable({
@@ -109,4 +111,53 @@ export default defineSchema({
     .index("by_task", ["taskNizekId"])
     .index("by_status", ["status"])
     .index("by_commit_task", ["commitId", "taskNizekId"]),
+
+  chatThreads: defineTable({
+    threadKey: v.string(),
+    kind: v.string(),
+    name: v.string(),
+    subtitle: v.optional(v.union(v.string(), v.null())),
+    projectId: v.optional(v.union(v.string(), v.null())),
+    conversationId: v.optional(v.union(v.string(), v.null())),
+    logoUrl: v.optional(v.union(v.string(), v.null())),
+    peerImageUrl: v.optional(v.union(v.string(), v.null())),
+    lastMessage: v.optional(v.union(v.string(), v.null())),
+    lastAuthor: v.optional(v.union(v.string(), v.null())),
+    lastAt: v.optional(v.union(v.string(), v.null())),
+    unread: v.number(),
+    avatar: v.optional(v.union(v.string(), v.null())),
+    initials: v.optional(v.union(v.string(), v.null())),
+    inactive: v.optional(v.boolean()),
+    readOnly: v.optional(v.boolean()),
+    syncedAt: v.number(),
+    deletedAt: v.optional(v.number()),
+  })
+    .index("by_threadKey", ["threadKey"])
+    .index("by_lastAt", ["lastAt"]),
+
+  chatMessages: defineTable({
+    nizekId: v.string(),
+    threadKey: v.string(),
+    authorId: v.string(),
+    authorName: v.string(),
+    authorImageUrl: v.optional(v.union(v.string(), v.null())),
+    body: v.string(),
+    createdAt: v.string(),
+    updatedAt: v.string(),
+    edited: v.boolean(),
+    replyToId: v.optional(v.union(v.string(), v.null())),
+    /** JSON: ChatAttachment[] */
+    attachmentsJson: v.string(),
+    /** JSON: ChatReaction[] */
+    reactionsJson: v.string(),
+    kind: v.string(),
+    important: v.boolean(),
+    /** JSON blob for task / activity extras */
+    extrasJson: v.optional(v.string()),
+    syncedAt: v.number(),
+    deletedAt: v.optional(v.number()),
+  })
+    .index("by_nizekId", ["nizekId"])
+    .index("by_thread_createdAt", ["threadKey", "createdAt"])
+    .index("by_thread", ["threadKey"]),
 });

@@ -5,6 +5,7 @@ import "./index.css";
 import App from "./App.tsx";
 import Admin from "./Admin.tsx";
 import Commits from "./Commits.tsx";
+import Chats from "./Chats.tsx";
 import ReleaseMaker from "./ReleaseMaker.tsx";
 
 const convexUrl = import.meta.env.VITE_CONVEX_URL;
@@ -32,6 +33,9 @@ function Root() {
   }
   if (path === "/commits" || path.startsWith("/commits/")) {
     return <Commits />;
+  }
+  if (path === "/chats" || path.startsWith("/chats/")) {
+    return <Chats />;
   }
   if (path === "/release" || path.startsWith("/release/")) {
     return <ReleaseMaker />;

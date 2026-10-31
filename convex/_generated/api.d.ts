@@ -8,6 +8,9 @@
  * @module
  */
 
+import type * as chatActions from "../chatActions.js";
+import type * as chatSyncInternal from "../chatSyncInternal.js";
+import type * as chats from "../chats.js";
 import type * as commits from "../commits.js";
 import type * as crons from "../crons.js";
 import type * as gitActions from "../gitActions.js";
@@ -31,6 +34,9 @@ import type {
 } from "convex/server";
 
 declare const fullApi: ApiFromModules<{
+  chatActions: typeof chatActions;
+  chatSyncInternal: typeof chatSyncInternal;
+  chats: typeof chats;
   commits: typeof commits;
   crons: typeof crons;
   gitActions: typeof gitActions;
