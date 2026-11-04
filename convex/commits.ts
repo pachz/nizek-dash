@@ -5,10 +5,71 @@ import {
   mutation,
   query,
 } from "./_generated/server";
-import type { Id } from "./_generated/dataModel";
+import type { Doc, Id } from "./_generated/dataModel";
+import type { QueryCtx } from "./_generated/server";
 import { isLive } from "./lib/softDelete";
 
 const BACKFILL_MS = 60 * 24 * 60 * 60 * 1000;
+const MATCH_STATUS_SCAN = 8000;
+
+type MatchBucket = {
+  accepted: Doc<"commitMatches">[];
+  suggested: Doc<"commitMatches">[];
+};
+
+/** One scan per status instead of N+1 by_commit lookups. */
+async function matchBucketsByCommit(ctx: QueryCtx) {
+  const acceptedRows = await ctx.db
+    .query("commitMatches")
+    .withIndex("by_status", (q) => q.eq("status", "accepted"))
+    .take(MATCH_STATUS_SCAN);
+  const suggestedRows = await ctx.db
+    .query("commitMatches")
+    .withIndex("by_status", (q) => q.eq("status", "suggested"))
+    .take(MATCH_STATUS_SCAN);
+
+  const buckets = new Map<Id<"commits">, MatchBucket>();
+  const ensure = (commitId: Id<"commits">) => {
+    let bucket = buckets.get(commitId);
+    if (!bucket) {
+      bucket = { accepted: [], suggested: [] };
+      buckets.set(commitId, bucket);
+    }
+    return bucket;
+  };
+
+  for (const m of acceptedRows) {
+    if (!isLive(m)) continue;
+    ensure(m.commitId).accepted.push(m);
+  }
+  for (const m of suggestedRows) {
+    if (!isLive(m)) continue;
+    ensure(m.commitId).suggested.push(m);
+  }
+  return buckets;
+}
+
+function matchToneFromBucket(bucket: MatchBucket | undefined) {
+  if (!bucket) return "unmatched" as const;
+  if (bucket.accepted.length > 0) return "matched" as const;
+  if (bucket.suggested.length > 0) return "suggested" as const;
+  return "unmatched" as const;
+}
+
+async function taskMeta(
+  ctx: QueryCtx,
+  taskNizekId: string,
+  cache: Map<string, Doc<"tasks"> | null>,
+) {
+  if (cache.has(taskNizekId)) return cache.get(taskNizekId) ?? null;
+  const task = await ctx.db
+    .query("tasks")
+    .withIndex("by_nizekId", (q) => q.eq("nizekId", taskNizekId))
+    .unique();
+  const live = task && isLive(task) ? task : null;
+  cache.set(taskNizekId, live);
+  return live;
+}
 
 export const upsertBatch = internalMutation({
   args: {
@@ -181,18 +242,13 @@ export const stats = query({
     const inWindow = recent.filter(
       (c) => isLive(c) && c.authoredAt >= sinceIso,
     );
+    const buckets = await matchBucketsByCommit(ctx);
     let matched = 0;
     let suggested = 0;
     for (const c of inWindow) {
-      const links = await ctx.db
-        .query("commitMatches")
-        .withIndex("by_commit", (q) => q.eq("commitId", c._id))
-        .take(20);
-      const live = links.filter(
-        (m) => isLive(m) && m.status !== "rejected",
-      );
-      if (live.some((m) => m.status === "accepted")) matched++;
-      else if (live.some((m) => m.status === "suggested")) suggested++;
+      const tone = matchToneFromBucket(buckets.get(c._id));
+      if (tone === "matched") matched++;
+      else if (tone === "suggested") suggested++;
     }
     const unmatched = inWindow.length - matched - suggested;
     return {
@@ -420,35 +476,12 @@ export const listForDashboard = query({
     const projectFilter = args.projectId;
     const statusFilter = args.matchStatus ?? "all";
 
-    type Row = {
-      _id: Id<"commits">;
-      sha: string;
-      message: string;
-      authorName: string;
-      authorEmail?: string;
-      authoredAt: string;
-      htmlUrl: string;
-      branches: string[];
-      repoFullName: string;
-      repoId: Id<"gitRepos">;
-      projectIds: string[];
-      matchSummary: {
-        accepted: number;
-        suggested: number;
-        top?: {
-          _id: Id<"commitMatches">;
-          taskNizekId: string;
-          taskCode?: string;
-          taskTitle?: string;
-          status: "suggested" | "accepted" | "rejected";
-          confidence: number;
-          method: "heuristic" | "ai";
-        };
-      };
+    type Candidate = {
+      commit: Doc<"commits">;
+      repo: Doc<"gitRepos">;
     };
 
-    const filtered: Row[] = [];
-
+    const candidates: Candidate[] = [];
     for (const c of rows) {
       if (!isLive(c) || c.authoredAt < sinceIso) continue;
       const repo = repoMap.get(c.repoId);
@@ -460,34 +493,72 @@ export const listForDashboard = query({
           `${c.message} ${c.authorName} ${c.sha} ${repo.fullName}`.toLowerCase();
         if (!hay.includes(search)) continue;
       }
+      candidates.push({ commit: c, repo });
+    }
 
-      const matchRows = await ctx.db
-        .query("commitMatches")
-        .withIndex("by_commit", (q) => q.eq("commitId", c._id))
-        .take(30);
+    // Only needed when filtering by match status, or to badge the page.
+    const buckets =
+      statusFilter === "all" ? null : await matchBucketsByCommit(ctx);
 
-      const live = matchRows.filter(
-        (m) => isLive(m) && m.status !== "rejected",
+    const filtered =
+      statusFilter === "all"
+        ? candidates
+        : candidates.filter(({ commit }) => {
+            const tone = matchToneFromBucket(buckets!.get(commit._id));
+            return tone === statusFilter;
+          });
+
+    const total = filtered.length;
+    const pageCount = Math.max(1, Math.ceil(total / pageSize));
+    const safePage = Math.min(page, pageCount);
+    const start = (safePage - 1) * pageSize;
+    const pageRows = filtered.slice(start, start + pageSize);
+
+    // Hydrate match summaries only for the visible page.
+    const pageBuckets =
+      buckets ??
+      (await (async () => {
+        const map = new Map<Id<"commits">, MatchBucket>();
+        for (const { commit } of pageRows) {
+          const matchRows = await ctx.db
+            .query("commitMatches")
+            .withIndex("by_commit", (q) => q.eq("commitId", commit._id))
+            .take(30);
+          const bucket: MatchBucket = { accepted: [], suggested: [] };
+          for (const m of matchRows) {
+            if (!isLive(m) || m.status === "rejected") continue;
+            if (m.status === "accepted") bucket.accepted.push(m);
+            else if (m.status === "suggested") bucket.suggested.push(m);
+          }
+          map.set(commit._id, bucket);
+        }
+        return map;
+      })());
+
+    const taskCache = new Map<string, Doc<"tasks"> | null>();
+    const items = [];
+    for (const { commit: c, repo } of pageRows) {
+      const bucket = pageBuckets.get(c._id) ?? {
+        accepted: [],
+        suggested: [],
+      };
+      const live = [...bucket.accepted, ...bucket.suggested].sort(
+        (a, b) => b.confidence - a.confidence,
       );
-      const hasAccepted = live.some((m) => m.status === "accepted");
-      const hasSuggested = live.some((m) => m.status === "suggested");
-
-      if (statusFilter === "matched" && !hasAccepted) continue;
-      if (statusFilter === "suggested" && !(hasSuggested && !hasAccepted))
-        continue;
-      if (statusFilter === "unmatched" && live.length > 0) continue;
-
-      const accepted = live.filter((m) => m.status === "accepted").length;
-      const suggested = live.filter((m) => m.status === "suggested").length;
-      const topMatch = live.sort((a, b) => b.confidence - a.confidence)[0];
+      const topMatch = live[0];
       let top:
-        | Row["matchSummary"]["top"]
+        | {
+            _id: Id<"commitMatches">;
+            taskNizekId: string;
+            taskCode?: string;
+            taskTitle?: string;
+            status: "suggested" | "accepted" | "rejected";
+            confidence: number;
+            method: "heuristic" | "ai";
+          }
         | undefined;
       if (topMatch) {
-        const task = await ctx.db
-          .query("tasks")
-          .withIndex("by_nizekId", (q) => q.eq("nizekId", topMatch.taskNizekId))
-          .unique();
+        const task = await taskMeta(ctx, topMatch.taskNizekId, taskCache);
         top = {
           _id: topMatch._id,
           taskNizekId: topMatch.taskNizekId,
@@ -501,7 +572,7 @@ export const listForDashboard = query({
         };
       }
 
-      filtered.push({
+      items.push({
         _id: c._id,
         sha: c.sha,
         message: c.message,
@@ -513,15 +584,13 @@ export const listForDashboard = query({
         repoFullName: repo.fullName,
         repoId: c.repoId,
         projectIds: repo.projectIds,
-        matchSummary: { accepted, suggested, top },
+        matchSummary: {
+          accepted: bucket.accepted.length,
+          suggested: bucket.suggested.length,
+          top,
+        },
       });
     }
-
-    const total = filtered.length;
-    const pageCount = Math.max(1, Math.ceil(total / pageSize));
-    const safePage = Math.min(page, pageCount);
-    const start = (safePage - 1) * pageSize;
-    const items = filtered.slice(start, start + pageSize);
 
     return {
       items,
