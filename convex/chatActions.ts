@@ -190,9 +190,8 @@ export const syncChats = action({
       const listHtml = await listRes.text();
       const listed = extractChatThreads(listHtml);
 
-      const projects = (await ctx.runQuery(api.projects.list, {})).filter(
-        (p) => p.enabled !== false,
-      );
+      // Include every live project chat (Board ignores projects.enabled).
+      const projects = await ctx.runQuery(api.projects.list, {});
       let threads = mergeWithProjects(
         listed,
         projects.map((p) => ({

@@ -111,11 +111,9 @@ export default function Notes() {
   const [statusNote, setStatusNote] = useState<string | null>(null);
   const didAutoSync = useRef(false);
 
-  const enabledProjects = useMemo(
+  const projectOptions = useMemo(
     () =>
-      (projects ?? [])
-        .filter((p) => p.enabled !== false)
-        .sort((a, b) => a.name.localeCompare(b.name)),
+      [...(projects ?? [])].sort((a, b) => a.name.localeCompare(b.name)),
     [projects],
   );
 
@@ -338,9 +336,10 @@ export default function Notes() {
                 }}
               >
                 <option value="">All projects</option>
-                {enabledProjects.map((p) => (
+                {projectOptions.map((p) => (
                   <option key={p.nizekId} value={p.nizekId}>
                     {p.name}
+                    {p.enabled === false ? " (off)" : ""}
                   </option>
                 ))}
               </select>
