@@ -21,6 +21,8 @@ export default defineSchema({
     lastMatchError: v.optional(v.string()),
     lastChatSyncAt: v.optional(v.number()),
     lastChatError: v.optional(v.string()),
+    lastNoteSyncAt: v.optional(v.number()),
+    lastNoteError: v.optional(v.string()),
   }).index("by_key", ["key"]),
 
   projects: defineTable({
@@ -160,6 +162,39 @@ export default defineSchema({
     .index("by_nizekId", ["nizekId"])
     .index("by_thread_createdAt", ["threadKey", "createdAt"])
     .index("by_thread", ["threadKey"])
+    .index("by_createdAt", ["createdAt"]),
+
+  notes: defineTable({
+    nizekId: v.string(),
+    projectId: v.string(),
+    title: v.string(),
+    contentHtml: v.string(),
+    contentText: v.string(),
+    noteType: v.string(),
+    date: v.optional(v.union(v.string(), v.null())),
+    createdAt: v.string(),
+    updatedAt: v.string(),
+    dueDate: v.optional(v.union(v.string(), v.null())),
+    startedAt: v.optional(v.union(v.string(), v.null())),
+    completedAt: v.optional(v.union(v.string(), v.null())),
+    workingDays: v.optional(v.union(v.number(), v.null())),
+    roadmapStatus: v.optional(v.union(v.string(), v.null())),
+    authorId: v.optional(v.union(v.string(), v.null())),
+    authorName: v.optional(v.union(v.string(), v.null())),
+    authorImageUrl: v.optional(v.union(v.string(), v.null())),
+    sprintId: v.optional(v.union(v.string(), v.null())),
+    taskId: v.optional(v.union(v.string(), v.null())),
+    commentThreadCount: v.number(),
+    openCommentCount: v.number(),
+    /** JSON: commentThreads / taskLinks / reminderLogs */
+    extrasJson: v.optional(v.string()),
+    syncedAt: v.number(),
+    deletedAt: v.optional(v.number()),
+  })
+    .index("by_nizekId", ["nizekId"])
+    .index("by_project", ["projectId"])
+    .index("by_project_createdAt", ["projectId", "createdAt"])
+    .index("by_noteType", ["noteType"])
     .index("by_createdAt", ["createdAt"]),
 
   /** Saved AI digests — one row per generation (history kept). */

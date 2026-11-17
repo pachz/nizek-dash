@@ -6,6 +6,7 @@ import App from "./App.tsx";
 import Admin from "./Admin.tsx";
 import Commits from "./Commits.tsx";
 import Chats from "./Chats.tsx";
+import Notes from "./Notes.tsx";
 import ReleaseMaker from "./ReleaseMaker.tsx";
 import Summary from "./Summary.tsx";
 import { applyTheme, subscribeTheme } from "./lib/theme";
@@ -44,6 +45,9 @@ function Root() {
   }
   if (path === "/chats" || path.startsWith("/chats/")) {
     return <Chats />;
+  }
+  if (path === "/notes" || path.startsWith("/notes/")) {
+    return <Notes />;
   }
   if (path === "/release" || path.startsWith("/release/")) {
     return <ReleaseMaker />;

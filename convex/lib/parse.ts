@@ -984,3 +984,246 @@ export function chatThreadFetchArgs(thread: {
   if (thread.projectId) return { projectId: thread.projectId };
   return null;
 }
+
+/** Panel noteType → display label (DEADLINE shows as Roadmap). */
+export const NOTE_TYPE_LABELS: Record<string, string> = {
+  MEETING_NOTE: "Meeting Note",
+  DECISION: "Decision",
+  CLARIFICATION: "Clarification",
+  DEADLINE: "Roadmap",
+  SPRINT_DOC: "Sprint Document",
+  SPRINT_PLANNING: "Sprint Planning",
+  SPRINT_REVIEW: "Sprint Review",
+};
+
+export const ALL_NOTE_TYPES = [
+  "MEETING_NOTE",
+  "DECISION",
+  "CLARIFICATION",
+  "DEADLINE",
+  "SPRINT_DOC",
+  "SPRINT_PLANNING",
+  "SPRINT_REVIEW",
+] as const;
+
+export type NoteType = (typeof ALL_NOTE_TYPES)[number];
+
+export type ParsedMeetingNote = {
+  id: string;
+  projectId: string;
+  title: string;
+  contentHtml: string;
+  contentText: string;
+  noteType: string;
+  date: string | null;
+  createdAt: string;
+  updatedAt: string;
+  dueDate: string | null;
+  startedAt: string | null;
+  completedAt: string | null;
+  workingDays: number | null;
+  roadmapStatus: string | null;
+  authorId: string | null;
+  authorName: string | null;
+  authorImageUrl: string | null;
+  sprintId: string | null;
+  taskId: string | null;
+  commentThreadCount: number;
+  openCommentCount: number;
+  extrasJson: string;
+};
+
+/** Strip HTML to plain text for card previews. */
+export function htmlToPlainText(html: string): string {
+  return html
+    .replace(/<script[\s\S]*?<\/script>/gi, " ")
+    .replace(/<style[\s\S]*?<\/style>/gi, " ")
+    .replace(/<br\s*\/?>/gi, "\n")
+    .replace(/<\/(p|div|li|h[1-6]|tr)>/gi, "\n")
+    .replace(/<[^>]+>/g, " ")
+    .replace(/&nbsp;/gi, " ")
+    .replace(/&amp;/gi, "&")
+    .replace(/&lt;/gi, "<")
+    .replace(/&gt;/gi, ">")
+    .replace(/&quot;/gi, '"')
+    .replace(/&#39;/gi, "'")
+    .replace(/[ \t]+\n/g, "\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .replace(/[ \t]{2,}/g, " ")
+    .trim();
+}
+
+/** Normalize Next.js flight date literals (`$D2026-11-16T…`) and nullish. */
+export function normalizeFlightDate(raw: unknown): string | null {
+  if (raw == null) return null;
+  if (typeof raw !== "string") return null;
+  const s = raw.startsWith("$D") ? raw.slice(2) : raw;
+  if (!s || s === "null" || s === "undefined") return null;
+  const t = Date.parse(s);
+  if (!Number.isFinite(t)) return s;
+  return new Date(t).toISOString();
+}
+
+function extractJsonArrayFromBrace(
+  html: string,
+  bracketIdx: number,
+): string | null {
+  if (html[bracketIdx] !== "[") return null;
+  let depth = 0;
+  let inStr = false;
+  let esc = false;
+  const from = bracketIdx;
+  for (let i = bracketIdx; i < html.length; i++) {
+    const ch = html[i]!;
+    if (inStr) {
+      if (esc) {
+        esc = false;
+        continue;
+      }
+      if (ch === "\\") {
+        esc = true;
+        continue;
+      }
+      if (ch === '"') inStr = false;
+      continue;
+    }
+    if (ch === '"') inStr = true;
+    else if (ch === "[") depth++;
+    else if (ch === "]") {
+      depth--;
+      if (depth === 0) return html.slice(from, i + 1);
+    }
+  }
+  return null;
+}
+
+function normalizeMeetingNote(
+  flightText: string,
+  raw: Record<string, unknown>,
+  forceProjectId?: string,
+): ParsedMeetingNote | null {
+  const id = typeof raw.id === "string" ? raw.id : null;
+  if (!id) return null;
+  const noteType =
+    typeof raw.noteType === "string" ? raw.noteType : "MEETING_NOTE";
+  const title = typeof raw.title === "string" ? raw.title : "";
+
+  let contentHtml = "";
+  const contentRaw = raw.content;
+  if (typeof contentRaw === "string") {
+    if (/^\$[0-9a-z]+$/i.test(contentRaw)) {
+      contentHtml = resolveFlightRef(flightText, contentRaw) ?? "";
+    } else {
+      contentHtml = contentRaw;
+    }
+  }
+
+  const author =
+    raw.author && typeof raw.author === "object"
+      ? (raw.author as Record<string, unknown>)
+      : null;
+
+  const threads = Array.isArray(raw.commentThreads) ? raw.commentThreads : [];
+  let openCommentCount = 0;
+  for (const t of threads) {
+    if (!t || typeof t !== "object") continue;
+    const row = t as Record<string, unknown>;
+    const subscribers = Array.isArray(row.subscribers) ? row.subscribers : [];
+    const hasOpen = subscribers.some(
+      (s) =>
+        s &&
+        typeof s === "object" &&
+        (s as Record<string, unknown>).understoodAt == null,
+    );
+    if (hasOpen || subscribers.length === 0) openCommentCount++;
+  }
+
+  const createdAt =
+    normalizeFlightDate(raw.createdAt) ?? new Date(0).toISOString();
+  const updatedAt = normalizeFlightDate(raw.updatedAt) ?? createdAt;
+
+  return {
+    id,
+    projectId:
+      forceProjectId ??
+      (typeof raw.projectId === "string" ? raw.projectId : ""),
+    title,
+    contentHtml,
+    contentText: htmlToPlainText(contentHtml),
+    noteType,
+    date: normalizeFlightDate(raw.date),
+    createdAt,
+    updatedAt,
+    dueDate: normalizeFlightDate(raw.dueDate),
+    startedAt: normalizeFlightDate(raw.startedAt),
+    completedAt: normalizeFlightDate(raw.completedAt),
+    workingDays:
+      typeof raw.workingDays === "number" ? raw.workingDays : null,
+    roadmapStatus:
+      typeof raw.roadmapStatus === "string" ? raw.roadmapStatus : null,
+    authorId:
+      typeof raw.authorId === "string"
+        ? raw.authorId
+        : typeof author?.id === "string"
+          ? author.id
+          : null,
+    authorName: typeof author?.name === "string" ? author.name : null,
+    authorImageUrl:
+      typeof author?.imageUrl === "string" ? author.imageUrl : null,
+    sprintId: typeof raw.sprintId === "string" ? raw.sprintId : null,
+    taskId: typeof raw.taskId === "string" ? raw.taskId : null,
+    commentThreadCount: threads.length,
+    openCommentCount,
+    extrasJson: JSON.stringify({
+      commentThreads: threads,
+      taskLinks: Array.isArray(raw.taskLinks) ? raw.taskLinks : [],
+      reminderLogs: Array.isArray(raw.reminderLogs) ? raw.reminderLogs : [],
+      history: Array.isArray(raw.history) ? raw.history : [],
+    }),
+  };
+}
+
+/**
+ * Parse Next.js server-action flight response for `getMeetingNotes`.
+ * Payload: `0:{"a":"$@1",…}` + `N:T…` content refs + `1:[{note},…]`.
+ */
+export function parseGetMeetingNotesResponse(
+  text: string,
+  forceProjectId?: string,
+): ParsedMeetingNote[] {
+  const m = text.match(/\d+:\[\{"id":"cm/);
+  if (!m || m.index == null) return [];
+  const bracketIdx = text.indexOf("[", m.index);
+  const arrStr = extractJsonArrayFromBrace(text, bracketIdx);
+  if (!arrStr) return [];
+  try {
+    const parsed = JSON.parse(arrStr) as unknown[];
+    const out: ParsedMeetingNote[] = [];
+    for (const row of parsed) {
+      if (!row || typeof row !== "object") continue;
+      // Resolve nested flight refs (author dates etc.) but keep content via
+      // normalizeMeetingNote which uses resolveFlightRef for HTML blobs.
+      const resolved = resolveFlightRefsDeep(
+        text,
+        row,
+      ) as Record<string, unknown>;
+      // content may have been "resolved" incorrectly if it looked like a short
+      // ref — restore original content ref when needed.
+      if (
+        typeof (row as Record<string, unknown>).content === "string" &&
+        /^\$[0-9a-z]+$/i.test(
+          (row as Record<string, unknown>).content as string,
+        )
+      ) {
+        resolved.content = (row as Record<string, unknown>).content;
+      }
+      const note = normalizeMeetingNote(text, resolved, forceProjectId);
+      if (note) out.push(note);
+    }
+    const map = new Map<string, ParsedMeetingNote>();
+    for (const n of out) map.set(n.id, n);
+    return [...map.values()];
+  } catch {
+    return [];
+  }
+}

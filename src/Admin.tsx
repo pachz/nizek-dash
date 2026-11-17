@@ -92,6 +92,7 @@ function AdminPanel({ onLock }: { onLock: () => void }) {
   const rotateToken = useAction(api.nizekActions.rotateToken);
   const syncAll = useAction(api.nizekActions.syncAll);
   const syncChats = useAction(api.chatActions.syncChats);
+  const syncNotes = useAction(api.noteActions.syncNotes);
   const syncCommits = useAction(api.gitActions.syncCommits);
   const runMatching = useAction(api.matchActions.runMatching);
   const openaiStatus = useAction(api.matchActions.openaiStatus);
@@ -208,6 +209,25 @@ function AdminPanel({ onLock }: { onLock: () => void }) {
             >
               Sync chats
             </button>
+            <button
+              type="button"
+              className="ghost"
+              disabled={pending}
+              onClick={() =>
+                void runJob("Syncing Panel notes…", async () => {
+                  const r = await syncNotes({});
+                  if (!r.ok) {
+                    showErr(r.error);
+                    return;
+                  }
+                  showOk(
+                    `Notes · ${r.projects} projects · ${r.notes} notes · +${r.inserted} / ~${r.updated}`,
+                  );
+                })
+              }
+            >
+              Sync notes
+            </button>
           </>
         }
       />
@@ -226,6 +246,15 @@ function AdminPanel({ onLock }: { onLock: () => void }) {
         ) : null}
         {settings?.lastChatError ? (
           <span className="pill danger">{settings.lastChatError}</span>
+        ) : null}
+        {settings?.lastNoteSyncAt ? (
+          <span className="pill soft">
+            Notes synced{" "}
+            {new Date(settings.lastNoteSyncAt).toLocaleTimeString()}
+          </span>
+        ) : null}
+        {settings?.lastNoteError ? (
+          <span className="pill danger">{settings.lastNoteError}</span>
         ) : null}
         {settings?.lastError ? (
           <span className="pill danger">{settings.lastError}</span>

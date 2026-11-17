@@ -7,6 +7,7 @@ export type AppSection =
   | "summary"
   | "commits"
   | "chats"
+  | "notes"
   | "release"
   | "admin";
 
@@ -36,6 +37,12 @@ const NAV: Array<{
     match: (p) => p === "/chats" || p.startsWith("/chats/"),
   },
   {
+    id: "notes",
+    href: "/notes",
+    label: "Notes",
+    match: (p) => p === "/notes" || p.startsWith("/notes/"),
+  },
+  {
     id: "release",
     href: "/release",
     label: "Release",
@@ -54,6 +61,7 @@ const SUBTITLES: Record<AppSection, string> = {
   summary: "Two-day digest",
   commits: "Commit intelligence",
   chats: "Panel chats",
+  notes: "Project notes",
   release: "Release maker",
   admin: "Admin",
 };
