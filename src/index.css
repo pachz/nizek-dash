@@ -1682,6 +1682,43 @@ a.link-btn:hover {
   border-radius: 50%;
 }
 
+.admin-project-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.admin-project-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.84rem;
+  min-height: 36px;
+}
+
+.admin-project-chip .dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.admin-project-name {
+  font-weight: 500;
+}
+
+.admin-project-state {
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.admin-project-chip[data-on="true"] .admin-project-state {
+  color: var(--ok);
+}
+
 /* ——— Commits dashboard ——— */
 
 .commits-app {

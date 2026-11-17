@@ -89,15 +89,17 @@ export const syncNotes = action({
     const cookie = settings.cookieHeader;
 
     try {
-      // Sync all live projects (Board ignores projects.enabled; Notes should too).
-      const allProjects = await ctx.runQuery(api.projects.list, {});
+      const allProjects = (await ctx.runQuery(api.projects.list, {})).filter(
+        (p) => p.enabled !== false,
+      );
       let projects = allProjects;
       if (args.projectIds?.length) {
         const want = new Set(args.projectIds);
         projects = allProjects.filter((p) => want.has(p.nizekId));
       }
       if (!projects.length) {
-        const error = "No projects to sync notes for — run project sync first.";
+        const error =
+          "No enabled projects to sync notes for — turn projects on in Admin.";
         await ctx.runMutation(internal.notesSyncInternal.patchNoteSettings, {
           lastNoteError: error,
         });

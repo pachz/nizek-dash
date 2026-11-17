@@ -113,7 +113,9 @@ export default function Notes() {
 
   const projectOptions = useMemo(
     () =>
-      [...(projects ?? [])].sort((a, b) => a.name.localeCompare(b.name)),
+      (projects ?? [])
+        .filter((p) => p.enabled !== false)
+        .sort((a, b) => a.name.localeCompare(b.name)),
     [projects],
   );
 
@@ -339,7 +341,6 @@ export default function Notes() {
                 {projectOptions.map((p) => (
                   <option key={p.nizekId} value={p.nizekId}>
                     {p.name}
-                    {p.enabled === false ? " (off)" : ""}
                   </option>
                 ))}
               </select>

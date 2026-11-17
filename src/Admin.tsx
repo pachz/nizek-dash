@@ -83,6 +83,8 @@ function AdminPanel({ onLock }: { onLock: () => void }) {
   );
 
   const saveCookie = useMutation(api.settings.saveCookie);
+  const setProjectEnabled = useMutation(api.projects.setEnabled);
+  const setAllProjectsEnabled = useMutation(api.projects.setAllEnabled);
   const saveGithubToken = useMutation(api.gitRepos.saveGithubToken);
   const upsertRepo = useMutation(api.gitRepos.upsert);
   const setRepoEnabled = useMutation(api.gitRepos.setEnabled);
@@ -321,6 +323,87 @@ function AdminPanel({ onLock }: { onLock: () => void }) {
             >
               Load seed export
             </button>
+          </div>
+        </div>
+      </section>
+
+      <section className="session-panel glass">
+        <div>
+          <h2>Projects</h2>
+          <p>
+            Toggle which synced Panel projects are active for Notes, Chats, and
+            sync jobs. Off projects stay in the database but are hidden from
+            those surfaces.
+          </p>
+          <div className="row" style={{ marginBottom: 12 }}>
+            <button
+              type="button"
+              className="tiny"
+              disabled={pending || !projects?.length}
+              onClick={() =>
+                void runJob("Enabling all projects…", async () => {
+                  await setAllProjectsEnabled({ enabled: true });
+                  showOk("All projects on");
+                })
+              }
+            >
+              All on
+            </button>
+            <button
+              type="button"
+              className="tiny"
+              disabled={pending || !projects?.length}
+              onClick={() =>
+                void runJob("Disabling all projects…", async () => {
+                  await setAllProjectsEnabled({ enabled: false });
+                  showOk("All projects off");
+                })
+              }
+            >
+              All off
+            </button>
+            <span className="pill soft">
+              {(projects ?? []).filter((p) => p.enabled !== false).length}/
+              {projects?.length ?? 0} on
+            </span>
+          </div>
+          <div className="admin-project-grid">
+            {[...(projects ?? [])]
+              .sort((a, b) => a.name.localeCompare(b.name))
+              .map((p) => {
+                const on = p.enabled !== false;
+                return (
+                  <button
+                    key={p.nizekId}
+                    type="button"
+                    className="ghost admin-project-chip"
+                    data-on={on}
+                    disabled={pending}
+                    onClick={() =>
+                      void runJob(
+                        `${on ? "Disabling" : "Enabling"} ${p.name}…`,
+                        async () => {
+                          await setProjectEnabled({
+                            nizekId: p.nizekId,
+                            enabled: !on,
+                          });
+                          showOk(`${p.name} ${on ? "off" : "on"}`);
+                        },
+                      )
+                    }
+                  >
+                    <span
+                      className="dot"
+                      style={{ background: p.color }}
+                      aria-hidden
+                    />
+                    <span className="admin-project-name">{p.name}</span>
+                    <span className="admin-project-state">
+                      {on ? "On" : "Off"}
+                    </span>
+                  </button>
+                );
+              })}
           </div>
         </div>
       </section>

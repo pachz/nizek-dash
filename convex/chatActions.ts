@@ -13,7 +13,7 @@ import {
 const PANEL = "https://panel.nizek.com";
 /** Panel Next.js server action id for `getThreadMessages` (from panel bundle). */
 const GET_THREAD_MESSAGES_ACTION =
-  "40ac612b4ae59caf79e36fc64f86c647407550e3b7";
+  "40443d78c26d05b80bc7ef090ef1dfd69b1bcba03d";
 
 type Ok<T> = { ok: true } & T;
 type Err = { ok: false; error: string };
@@ -190,8 +190,9 @@ export const syncChats = action({
       const listHtml = await listRes.text();
       const listed = extractChatThreads(listHtml);
 
-      // Include every live project chat (Board ignores projects.enabled).
-      const projects = await ctx.runQuery(api.projects.list, {});
+      const projects = (await ctx.runQuery(api.projects.list, {})).filter(
+        (p) => p.enabled !== false,
+      );
       let threads = mergeWithProjects(
         listed,
         projects.map((p) => ({
